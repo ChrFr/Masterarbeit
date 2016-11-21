@@ -401,7 +401,7 @@ public class ImageView extends JScrollPane {
 				// draw grid if zoom > 6
 				if (zoom >= 6.0f) {
 
-					drawGrid(g2D, r.width, r.height);
+					//drawGrid(g2D, r.width, r.height);
 				}
 				
 				if(renderContours)

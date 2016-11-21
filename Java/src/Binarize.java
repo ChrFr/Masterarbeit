@@ -30,7 +30,7 @@ public class Binarize extends JPanel {
 	private static final int initThreshold = 50;   
 	private static JFrame frame;
 	private JSlider sizeSlider; // to adjust the ImageSize
-	private static final int minZoom = 1;
+	private static final int minZoom = 0;
 	private static final int maxZoom = 15;
 	
 	private ImageView srcView;				// source image view
@@ -90,10 +90,11 @@ public class Binarize extends JPanel {
 
 		sizeSlider.addChangeListener(new ChangeListener() {
 			public void stateChanged(ChangeEvent e) {
+				srcView.setZoom((float) sizeSlider.getValue());
 				dstView.setZoom((float) sizeSlider.getValue());
 			}
 		});
-		
+
         // selector for the binarization method
         JLabel methodText = new JLabel("Methode:");
         String[] methodNames = {"Schwellwert in Prozent", "Iso-Data-Algorithmus"};
@@ -155,6 +156,8 @@ public class Binarize extends JPanel {
         controls.add(methodList, c);
         controls.add(slider, c);
         controls.add(checkbox, c);
+		controls.add(sizeSliderTxt, c);
+		controls.add(sizeSlider, c);
         
         JPanel images = new JPanel(new FlowLayout());
         images.add(srcView);
