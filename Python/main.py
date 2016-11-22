@@ -4,6 +4,7 @@ from main_window import Ui_MainWindow
 from PyQt5.QtWidgets import QApplication, QMainWindow
 from opencv_preprocessor import OpenCVPreProcessor
 import numpy as np
+import cv2
 
 class ImageViewer():
     """
@@ -18,6 +19,7 @@ class ImageViewer():
         self.label = label
         self.size = self.label.size()
         self.current_zoom = 1
+        self.pixmap = None
         
     def draw_pixels(self, pixel_array):
         """
@@ -49,9 +51,11 @@ class ImageViewer():
         Parameters
         ----------
         size : QSize, width and height the image is scaled to        
-        """
+        """        
         if factor is not None:
             self.current_zoom = factor
+        if self.pixmap is None:
+            return
         zoom = QtCore.QSize(self.size.width() * self.current_zoom, self.size.height() * self.current_zoom)
         scaled = self.pixmap.scaled(zoom, QtCore.Qt.KeepAspectRatio)
         self.label.setPixmap(scaled)
@@ -83,12 +87,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         self.preprocess_combo.currentIndexChanged.connect(combo_changed)
         
-        self.load_image('DSC_5820.JPG')                    
+        self.preprocess_button.pressed.connect(self.preprocess)
+        
+        def browse_image():
+            filters=['Images (*.png, *.jpg)', 'All Files(*.*)']
+            filename, filter = Qt.QFileDialog.getOpenFileName(
+                    self, 'Choose Image',
+                    filter=';;'.join(filters),
+                    initialFilter=filters[0])
+            if filename:
+                self.load_image(filename)
+        
+        self.actionOpen_Image.triggered.connect(browse_image)
+        self.actionExit.triggered.connect(Qt.qApp.quit)      
         
     def load_image(self, filename):
         self.source_pixels = self.preprocessor.read_file(filename)
-        self.source_view.draw_pixels(self.source_pixels)        
-        self.preprocess()
+        self.source_view.draw_pixels(self.source_pixels)     
         
     def preprocess(self):
         preprocessed_images = self.preprocessor.process()

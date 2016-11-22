@@ -32,20 +32,49 @@ class OpenCVPreProcessor(PreProcessor):
         #ret, binarized = cv2.threshold(green, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)           
         return binary
     
+    def _mask(self, source, binary):
+        self.binary_mask = np.clip(binary, 0, 1)
+        masked_source = source.copy()
+        
+        # colored (3 values per pixel)
+        if len(source.shape) == 3:
+            for i in range(3):
+                masked_source[:, :, i] = np.multiply(masked_source[:, :, i], self.binary_mask)
+        # black/white or grey
+        else:
+            masked_source = np.multiply(masked_source, self.binary_mask) 
+            
+        return masked_source
+    
+    def _segment_veins(self):
+        grey = cv2.cvtColor(self.source_pixels, cv2.COLOR_BGR2GRAY)
+        #grey = cv2.GaussianBlur(grey,(5,5),0)
+        #segmented = cv2.adaptiveThreshold(grey, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 13, 6)
+        #segmented = cv2.Canny(self.source_pixels, 1, 50, 3)
+        
+        #lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
+        #lines = lsd.detect(grey)
+        #segmented = lsd.drawSegments(np.empty(grey.shape), lines[0])
+        
+        kernel = np.ones((5,5),np.uint8)
+        erosion = cv2.erode(grey, kernel, iterations = 1)
+        dilation = cv2.dilate(erosion, kernel, iterations = 1)
+        segmented = cv2.Canny(dilation, 30, 50, 3)
+        #dilate(image,dst,element);        
+        
+        return segmented
+    
     def segment(self):
-        #binarized = cv2.adaptiveThreshold(grey, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 13, 6)        # gar nicht schlecht für adern evtl.
         return self.source_pixels
     
     def process(self):
         processed_images = OrderedDict()
         binary = self.binarize()
-        self.binary_mask = np.clip(binary, 0, 1)
-        masked_source = self.source_pixels.copy()
+        masked_source = self._mask(self.source_pixels, binary)
+        veins = self._segment_veins()
         
-        for i in range(3):
-            masked_source[:, :, i] = np.multiply(self.source_pixels[:, :, i], self.binary_mask)      
-            
         processed_images['binary'] = binary
         processed_images['masked source'] = masked_source
+        processed_images['veins'] = veins
         
         return processed_images
