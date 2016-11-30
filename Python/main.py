@@ -60,6 +60,7 @@ class ImageViewer():
         scaled = self.pixmap.scaled(zoom, QtCore.Qt.KeepAspectRatio)
         self.label.setPixmap(scaled)
         
+
         
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
@@ -73,21 +74,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         self.preprocessor = OpenCVPreProcessor()  
         
+        # drag and drop images into source view, will be handled by self.eventFilter
+        self.source_image_scroll.setAcceptDrops(True)
+        self.source_image_scroll.installEventFilter(self)
+        
+        # zoom on slider change
         def slider_moved(factor):
             self.source_view.zoom(factor)
-            self.preprocess_view.zoom(factor)
-        
+            self.preprocess_view.zoom(factor)        
         self.zoom_slider.valueChanged.connect(slider_moved)
         
+        # change image on changing combo containing the preprocessed data
         def combo_changed(index):
             if index < 0:
                 return
             pixels = self.preprocess_combo.itemData(index)
-            self.preprocess_view.draw_pixels(pixels)
-        
+            self.preprocess_view.draw_pixels(pixels)        
         self.preprocess_combo.currentIndexChanged.connect(combo_changed)
         
-        self.preprocess_button.pressed.connect(self.preprocess)
+        self.preprocess_button.pressed.connect(self.preprocess)      
         
         def browse_image():
             filters=['Images (*.png, *.jpg)', 'All Files(*.*)']
@@ -100,17 +105,40 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         self.actionOpen_Image.triggered.connect(browse_image)
         self.actionExit.triggered.connect(Qt.qApp.quit)      
+
+    # called on events connected via installFilterEvent
+    def eventFilter(self, object, event):
+        if (object is self.source_image_scroll):
+            if (event.type() == QtCore.QEvent.DragEnter):
+                # dragged item has url (most likely path to file)
+                if event.mimeData().hasUrls():
+                    event.accept()   
+                    return True
+                else:
+                    event.ignore()
+            if (event.type() == QtCore.QEvent.Drop):
+                # if dropped item has url -> extract filename 
+                if event.mimeData().hasUrls():  
+                    filename = event.mimeData().urls()[0].toLocalFile()
+                    self.load_image(filename)
+                    return True
+            return False
         
     def load_image(self, filename):
+        self.reset_views()
         self.source_pixels = self.preprocessor.read_file(filename)
         self.source_view.draw_pixels(self.source_pixels)     
         
     def preprocess(self):
-        preprocessed_images = self.preprocessor.process()
+        self.preprocessor.process()
         self.preprocess_combo.clear()
-        for name, pixels in preprocessed_images.items():
+        for name, pixels in self.preprocess.preprocessed_images.items():
             self.preprocess_combo.addItem(name, pixels)
         #self.preprocess_combo.setCurrentIndex(self.preprocess_combo.count())
+        
+    def reset_views(self):
+        self.preprocess_combo.clear()
+        self.preprocess_label.clear()
         
 def main():
     app = QApplication(sys.argv)
