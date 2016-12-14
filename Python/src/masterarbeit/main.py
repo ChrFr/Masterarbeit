@@ -1,8 +1,9 @@
 from PyQt5 import Qt, QtCore, QtGui, QtWidgets
 import sys
-from main_window import Ui_MainWindow
+from UI.main_window_ui import Ui_MainWindow
 from PyQt5.QtWidgets import QApplication, QMainWindow
 from opencv_preprocessor import OpenCVPreProcessor
+from hu_descriptor import HuDescriptor
 import numpy as np
 import cv2
 
@@ -23,11 +24,11 @@ class ImageViewer():
         
     def draw_pixels(self, pixel_array):
         """
-        draw image from given pixels
+        draw image from given pixels (colored or greyscale)
         
         Parameters
         ----------
-        pixel_array : numpy array, array of pixels, each pixel is described by an array with 3 values for rgb-values
+        pixel_array : numpy array, array of pixels, colored: each pixel is described by an array with 3 values for rgb-values, else only one value per pixel
         """
         shape = pixel_array.shape
         # colored
@@ -73,6 +74,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.preprocess_view = ImageViewer(self.preprocess_label)         
         
         self.preprocessor = OpenCVPreProcessor()  
+        self.descriptor = HuDescriptor()
         
         # drag and drop images into source view, will be handled by self.eventFilter
         self.source_image_scroll.setAcceptDrops(True)
@@ -132,8 +134,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def preprocess(self):
         self.preprocessor.process()
         self.preprocess_combo.clear()
-        for name, pixels in self.preprocess.preprocessed_images.items():
+        for name, pixels in self.preprocessor.processed_images.items():
             self.preprocess_combo.addItem(name, pixels)
+        
+        self.descriptor.describe(self.preprocessor.processed_images['binary'])
         #self.preprocess_combo.setCurrentIndex(self.preprocess_combo.count())
         
     def reset_views(self):

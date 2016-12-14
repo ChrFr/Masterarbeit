@@ -90,35 +90,35 @@ class OpenCVPreProcessor(PreProcessor):
         binary = self.binarize()
         masked_source = self._mask(self.source_pixels)
         
-        processed_images['binary'] = binary
-        processed_images['masked source'] = masked_source      
+        self.processed_images['binary'] = binary
+        self.processed_images['masked source'] = masked_source    
+        self.scale_to_bounding_box(binary.copy(), masked_source)
+        #self.segment_veins()
+        
+    def segment_veins(self):
         
         grey = cv2.cvtColor(self.source_pixels, cv2.COLOR_RGB2GRAY)   
         gabor = _gabor(grey)
-        processed_images['gabor'] = gabor        
+        self.processed_images['gabor'] = gabor        
         
         #lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
         #lines = lsd.detect(gabor)
         #line_img = lsd.drawSegments(np.empty(grey.shape), lines[0])    
-        #processed_images['lines'] = line_img   
-        #cv2.imshow('', line_img)
-        
-        #ret, binary = cv2.threshold(gabor, 75, 255, cv2.THRESH_BINARY)  
-        #processed_images['gabor binary'] = binary
-        
-        #adaptive = cv2.adaptiveThreshold(grey, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 13, 6)   
-        #processed_images['adaptive'] = adaptive      
-        
-        thresh = self._mask(cv2.threshold(gabor, 60, 255, cv2.THRESH_BINARY)[1])
-        processed_images['thresh'] = thresh      
+        #cv2.imshow('', line_img)        
+                
+        thresh = self._mask(cv2.threshold(gabor, 75, 255, cv2.THRESH_BINARY)[1])
+        self.processed_images['thresh'] = thresh      
         kernel = np.ones((3,3),np.uint8)
-        erosion = cv2.erode(thresh, kernel, iterations = 3)
-        dilation = cv2.dilate(erosion, kernel, iterations = 3)        
-        processed_images['opening'] = dilation     
-        processed_images['removed opening'] = thresh - dilation         
-        #processed_images['closing'] = dilation
+        erosion = cv2.erode(thresh, kernel, iterations = 5)
+        dilation = cv2.dilate(erosion, kernel, iterations = 5)        
+        self.processed_images['opening'] = dilation     
+        self.processed_images['removed opening'] = thresh - dilation              
         
-        #processed_images['gabor_thresh'] = cv2.adaptiveThreshold(gabor, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 13, 6)        
+    def scale_to_bounding_box(self, binary, image):
+        contours = cv2.findContours(binary, 1, 2)
+        x,y,w,h = cv2.boundingRect(contours[0])
+        cropped = image[y: y + h, x: x + w]
+        self.processed_images['cropped mask'] = cropped.copy()    
 
 def _gabor(image):
 
