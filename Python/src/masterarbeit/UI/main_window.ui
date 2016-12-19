@@ -225,7 +225,7 @@
      <string>Batch</string>
     </property>
     <addaction name="actionCrop_Images"/>
-    <addaction name="actionAdd_Species"/>
+    <addaction name="actionExtract_Features"/>
    </widget>
    <widget class="QMenu" name="menuTraining">
     <property name="title">
@@ -262,7 +262,7 @@
     <string>Crop Images</string>
    </property>
   </action>
-  <action name="actionAdd_Species">
+  <action name="actionExtract_Features">
    <property name="text">
     <string>Extract Features</string>
    </property>

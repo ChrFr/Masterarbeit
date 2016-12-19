@@ -3,6 +3,8 @@ import sys
 from UI.main_window_ui import Ui_MainWindow
 from PyQt5.QtWidgets import QApplication, QMainWindow
 from opencv_preprocessor import OpenCVPreProcessor
+from batch_dialogs import (CropDialog, browse_file, 
+                           ALL_FILES_FILTER, IMAGE_FILTER)
 from hu_descriptor import HuDescriptor
 import numpy as np
 import cv2
@@ -61,7 +63,6 @@ class ImageViewer():
         scaled = self.pixmap.scaled(zoom, QtCore.Qt.KeepAspectRatio)
         self.label.setPixmap(scaled)
         
-
         
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
@@ -81,31 +82,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.source_image_scroll.installEventFilter(self)
         
         # zoom on slider change
-        def slider_moved(factor):
+        def zoom_changed(factor):
             self.source_view.zoom(factor)
             self.preprocess_view.zoom(factor)        
-        self.zoom_slider.valueChanged.connect(slider_moved)
+        self.zoom_slider.valueChanged.connect(zoom_changed)
         
-        # change image on changing combo containing the preprocessed data
-        def combo_changed(index):
+        # change image when selected from combo containing the preprocessed data
+        def image_selected(index):
             if index < 0:
                 return
             pixels = self.preprocess_combo.itemData(index)
             self.preprocess_view.draw_pixels(pixels)        
-        self.preprocess_combo.currentIndexChanged.connect(combo_changed)
+        self.preprocess_combo.currentIndexChanged.connect(image_selected)
         
         self.preprocess_button.pressed.connect(self.preprocess)      
         
-        def browse_image():
-            filters=['Images (*.png, *.jpg)', 'All Files(*.*)']
-            filename, filter = Qt.QFileDialog.getOpenFileName(
-                    self, 'Choose Image',
-                    filter=';;'.join(filters),
-                    initialFilter=filters[0])
-            if filename:
-                self.load_image(filename)
+        self.actionOpen_Image.triggered.connect(
+            lambda: self.load_image(
+                browse_file(title='Choose Image', 
+                            filters=[IMAGE_FILTER, ALL_FILES_FILTER],
+                            parent=self)
+            )
+        )
         
-        self.actionOpen_Image.triggered.connect(browse_image)
+        self.actionCrop_Images.triggered.connect(lambda: CropDialog().exec_())
         self.actionExit.triggered.connect(Qt.qApp.quit)      
 
     # called on events connected via installFilterEvent
@@ -127,6 +127,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             return False
         
     def load_image(self, filename):
+        if not filename:
+            return
         self.reset_views()
         self.source_pixels = self.preprocessor.read_file(filename)
         self.source_view.draw_pixels(self.source_pixels)     
@@ -134,10 +136,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def preprocess(self):
         self.preprocessor.process()
         self.preprocess_combo.clear()
-        for name, pixels in self.preprocessor.processed_images.items():
+        for name, pixels in self.preprocessor.process_steps.items():
             self.preprocess_combo.addItem(name, pixels)
         
-        self.descriptor.describe(self.preprocessor.processed_images['binary'])
+        self.descriptor.describe(self.preprocessor.process_steps['binary'])
         #self.preprocess_combo.setCurrentIndex(self.preprocess_combo.count())
         
     def reset_views(self):

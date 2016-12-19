@@ -9,7 +9,8 @@ class OpenCVPreProcessor(PreProcessor):
     
     def __init__(self):
         self.source_pixels = None
-        self.processed_images = OrderedDict()
+        self.processed_pixels = None
+        self.process_steps = OrderedDict()
     
     def read_file(self, filename):     
         """
@@ -24,10 +25,11 @@ class OpenCVPreProcessor(PreProcessor):
             return
         cv2.cvtColor(pixel_array, cv2.COLOR_BGR2RGB, pixel_array)
         self.source_pixels = pixel_array  
+        self.processed_pixels = pixel_array.copy()
         return self.source_pixels
             
     def binarize(self):
-        grey = cv2.cvtColor(self.source_pixels, cv2.COLOR_BGR2GRAY)
+        grey = cv2.cvtColor(self.processed_pixels, cv2.COLOR_BGR2GRAY)
         #blur = cv2.GaussianBlur(grey, (5, 5), 0)
         ret, binary = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)         
         #binarized = cv2.adaptiveThreshold(grey, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 31, 6)    
@@ -37,7 +39,8 @@ class OpenCVPreProcessor(PreProcessor):
         
         #green = self.source_pixels[:, :, 1]
         #ret, binarized = cv2.threshold(green, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)     
-        self.binary_mask = np.clip(binary, 0, 1)      
+        self.binary_mask = np.clip(binary, 0, 1)   
+        self.processed_pixels = binary
         return binary
     
     def _mask(self, source):
@@ -75,7 +78,7 @@ class OpenCVPreProcessor(PreProcessor):
         #erosion = cv2.erode(segmented, kernel, iterations = 1)
         #dilation = cv2.dilate(erosion, kernel, iterations = 1)
         
-        gabor = _gabor(grey)
+        gabor = gabor(grey)
         segmented = cv2.adaptiveThreshold(gabor, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY_INV, 13, 6) 
         return gabor
     
@@ -84,22 +87,34 @@ class OpenCVPreProcessor(PreProcessor):
         return self.source_pixels
     
     def process(self):
-        self.processed_images.clear()
+        self.process_steps.clear()
         if self.source_pixels is None:
             return
         binary = self.binarize()
         masked_source = self._mask(self.source_pixels)
         
-        self.processed_images['binary'] = binary
-        self.processed_images['masked source'] = masked_source    
-        self.scale_to_bounding_box(binary.copy(), masked_source)
-        #self.segment_veins()
+        self.process_steps['binary'] = binary
+        self.process_steps['masked source'] = masked_source    
+        cropped = scale_to_bounding_box(binary.copy(), masked_source)
+        self.processed_pixels = cropped
+        
+    def crop(self):
+        self.process_steps.clear()
+        if self.source_pixels is None:
+            return
+        binary = self.binarize()
+        masked_source = self._mask(self.source_pixels)
+        
+        self.process_steps['binary'] = binary
+        self.process_steps['masked source'] = masked_source    
+        cropped = scale_to_bounding_box(binary.copy(), masked_source)     
+        self.processed_pixels = cropped   
         
     def segment_veins(self):
         
         grey = cv2.cvtColor(self.source_pixels, cv2.COLOR_RGB2GRAY)   
-        gabor = _gabor(grey)
-        self.processed_images['gabor'] = gabor        
+        gabor = gabor(grey)
+        self.process_steps['gabor'] = gabor        
         
         #lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
         #lines = lsd.detect(gabor)
@@ -107,20 +122,26 @@ class OpenCVPreProcessor(PreProcessor):
         #cv2.imshow('', line_img)        
                 
         thresh = self._mask(cv2.threshold(gabor, 75, 255, cv2.THRESH_BINARY)[1])
-        self.processed_images['thresh'] = thresh      
+        self.process_steps['thresh'] = thresh      
         kernel = np.ones((3,3),np.uint8)
         erosion = cv2.erode(thresh, kernel, iterations = 5)
         dilation = cv2.dilate(erosion, kernel, iterations = 5)        
-        self.processed_images['opening'] = dilation     
-        self.processed_images['removed opening'] = thresh - dilation              
+        self.process_steps['opening'] = dilation     
+        self.process_steps['removed opening'] = thresh - dilation   
         
-    def scale_to_bounding_box(self, binary, image):
-        contours = cv2.findContours(binary, 1, 2)
-        x,y,w,h = cv2.boundingRect(contours[0])
-        cropped = image[y: y + h, x: x + w]
-        self.processed_images['cropped mask'] = cropped.copy()    
+    def write_to(self, filename):
+        pixel_array = self.processed_pixels.copy()
+        cv2.cvtColor(pixel_array, cv2.COLOR_RGB2BGR, pixel_array)
+        cv2.imwrite(filename, pixel_array)
+        
+        
+def scale_to_bounding_box(binary, image):
+    contours = cv2.findContours(binary, 1, 2)
+    x,y,w,h = cv2.boundingRect(contours[0])
+    cropped = image[y: y + h, x: x + w]
+    return cropped.copy()    
 
-def _gabor(image):
+def gabor(image):
 
     def build_filters():
         filters = []
