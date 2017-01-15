@@ -6,11 +6,8 @@ from masterarbeit.model.preprocessor.preprocessor import PreProcessor
 
 class OpenCVPreProcessor(PreProcessor):
     
-    def __init__(self):
-        self.source_pixels = None
-        self.processed_pixels = None
-    
-    def read_file(self, filename):     
+    @staticmethod
+    def read(filename):     
         """
         read image from file
         
@@ -19,38 +16,33 @@ class OpenCVPreProcessor(PreProcessor):
         filename : str, name of the file to read       
         """           
         pixel_array = cv2.imread(filename, cv2.IMREAD_COLOR) 
-        if pixel_array is None:
-            return
         cv2.cvtColor(pixel_array, cv2.COLOR_BGR2RGB, pixel_array)
-        self.source_pixels = pixel_array  
-        self.processed_pixels = pixel_array.copy()
-        return self.source_pixels
-            
-    def binarize(self):
-        grey = cv2.cvtColor(self.processed_pixels, cv2.COLOR_BGR2GRAY)
-        #blur = cv2.GaussianBlur(grey, (5, 5), 0)
-        ret, binary = cv2.threshold(grey, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)         
-        #binarized = cv2.adaptiveThreshold(grey, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 31, 6)    
-        #binarized = cv2.Canny( grey, 1, 200, 100 );
-               
-        #binarized = cv2.pyrMeanShiftFiltering(self.source_pixels, 30, 30, 3);
-        
-        #green = self.source_pixels[:, :, 1]
-        #ret, binarized = cv2.threshold(green, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)     
-        self.binary_mask = np.clip(binary, 0, 1)   
-        self.processed_pixels = binary
-        return binary
+        return pixel_array    
     
-    def _mask(self, source):
-        masked_source = source.copy()
+    @staticmethod    
+    def write(image, filename):
+        pixels = image.copy()
+        cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR, pixels)
+        success = cv2.imwrite(filename, pixels)
+        return success
+        
+
+class Binarize(OpenCVPreProcessor):
+    
+    def __init__(self):
+        self.source_pixels = None
+        self.processed_pixels = None
+    
+    def _mask(image, mask):
+        masked_source = image.copy()
         
         # colored (3 values per pixel)
-        if len(source.shape) == 3:
+        if len(masked_source.shape) == 3:
             for i in range(3):
-                masked_source[:, :, i] = np.multiply(masked_source[:, :, i], self.binary_mask)
+                masked_source[:, :, i] = np.multiply(masked_source[:, :, i], mask)
         # black/white or grey
         else:
-            masked_source = np.multiply(masked_source, self.binary_mask) 
+            masked_source = np.multiply(masked_source, masked_source) 
             
         return masked_source
     
@@ -83,25 +75,21 @@ class OpenCVPreProcessor(PreProcessor):
     def segment(self):
         return self.source_pixels
     
-    def process(self, steps_dict=None):
-        if self.source_pixels is None:
-            return
-        binary = self.binarize()
-        masked_source = self._mask(self.source_pixels)
+    @staticmethod      
+    def process(image, steps_dict=None):
+        binary, mask = binarize(image)
+        #masked_source = self._mask(image)
         if steps_dict is not None:
             steps_dict['binary'] = binary
-            steps_dict['masked source'] = masked_source    
-        cropped = scale_to_bounding_box(binary.copy(), masked_source)
-        return cropped
+            #steps_dict['masked source'] = masked_source    
+        #cropped = scale_to_bounding_box(binary.copy(), masked_source)
+        return binary
     
-    def crop(self):
-        self.process_steps.clear()
-        if self.source_pixels is None:
-            return
-        binary = self.binarize()
-        masked_source = self._mask(self.source_pixels)        
-        cropped = scale_to_bounding_box(binary.copy(), masked_source)     
-        self.processed_pixels = cropped   
+    def crop(image):
+        binary, mask = binarize(image)
+        masked_source = Binarize._mask(image, mask)        
+        cropped = scale_to_bounding_box(binary, masked_source)     
+        return cropped
         
     def segment_veins(self):
         
@@ -118,12 +106,24 @@ class OpenCVPreProcessor(PreProcessor):
         erosion = cv2.erode(thresh, kernel, iterations = 5)
         dilation = cv2.dilate(erosion, kernel, iterations = 5)  
         
-    def write_to(self, filename):
-        pixel_array = self.processed_pixels.copy()
-        cv2.cvtColor(pixel_array, cv2.COLOR_RGB2BGR, pixel_array)
-        cv2.imwrite(filename, pixel_array)
-        
-        
+    
+    
+def binarize(image):
+    #self.processed_pixels = cv2.GaussianBlur(self.processed_pixels, (5,5), 0)
+    grey = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    #grey = cv2.equalizeHist(grey)
+    #blur = cv2.GaussianBlur(grey, (11, 11), 0)
+    ret, binary = cv2.threshold(grey, 220, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)         
+    #binary = cv2.adaptiveThreshold(blur, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 31, 6)    
+    #binarized = cv2.Canny( grey, 1, 200, 100 );
+
+    #binarized = cv2.pyrMeanShiftFiltering(self.source_pixels, 30, 30, 3);
+
+    #green = self.source_pixels[:, :, 1]
+    #ret, binary = cv2.threshold(green, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)     
+    binary_mask = np.clip(binary, 0, 1)   
+    return binary, binary_mask    
+
 def scale_to_bounding_box(binary, image):
     contours = cv2.findContours(binary, 1, 2)
     x,y,w,h = cv2.boundingRect(contours[0])

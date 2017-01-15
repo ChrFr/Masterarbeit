@@ -2,7 +2,9 @@ from PyQt5 import Qt, QtCore, QtGui, QtWidgets
 import sys
 from UI.main_window_ui import Ui_MainWindow
 from PyQt5.QtWidgets import QApplication, QMainWindow
-from masterarbeit.model.preprocessor.opencv_preprocessor import OpenCVPreProcessor
+from collections import OrderedDict
+from masterarbeit.model.preprocessor.preprocessor_opencv import Binarize
+from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV
 from masterarbeit.UI.batch_dialogs import (CropDialog, browse_file, 
                                            ALL_FILES_FILTER, IMAGE_FILTER)
 from masterarbeit.model.features.hu_moments import HuMoments
@@ -34,16 +36,21 @@ class ImageViewer():
         """
         shape = pixel_array.shape
         # colored
+        height = shape[0] 
+        width = shape[1]
+        byte_value = 0
         if len(shape) == 3:
-            height, width, byteValue = shape
-            byteValue = byteValue * width
-            q_image = QtGui.QImage(pixel_array, width, height, byteValue, QtGui.QImage.Format_RGB888)
+            imformat = QtGui.QImage.Format_RGB888
+            byte_value = shape[2] * width
         # greyscale
         elif len(shape) == 2:
-            height, width = shape
-            q_image = QtGui.QImage(pixel_array, width, height, 0, QtGui.QImage.Format_Grayscale8)            
-        else:
-            return
+            imformat = QtGui.QImage.Format_Grayscale8  
+            
+        #if pixel_array.dtype == 'float64':
+            #imformat = QtGui.QImage.Form
+            ##pixel_array = pixel_array * 255
+            
+        q_image = QtGui.QImage(pixel_array, width, height, byte_value, imformat)        
         self.pixmap = QtGui.QPixmap(q_image)
         self.zoom()       
 
@@ -70,10 +77,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setupUi(self)
         self.setup()
 
-    def setup(self):      
+    def setup(self):
+        self.preprocessor = Binarize
+        
         self.source_view = ImageViewer(self.source_label)
-        self.preprocess_view = ImageViewer(self.preprocess_label)         
-
+        self.preprocess_view = ImageViewer(self.preprocess_label)      
 
         # drag and drop images into source view, will be handled by self.eventFilter
         self.source_image_scroll.setAcceptDrops(True)
@@ -128,21 +136,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not filename:
             return
         self.reset_views()
-        self.source_pixels = self.preprocessor.read_file(filename)
+        self.source_pixels = self.preprocessor.read(filename)
         self.source_view.draw_pixels(self.source_pixels)     
 
     def preprocess(self):
-        self.preprocessor.process()
         self.preprocess_combo.clear()
-        for name, pixels in self.preprocessor.process_steps.items():
+        steps = OrderedDict()
+        self.preprocessor.process(self.source_pixels, steps_dict=steps)
+        for name, pixels in steps.items():
             self.preprocess_combo.addItem(name, pixels)
 
-        self.descriptor.describe(self.preprocessor.process_steps['binary'])
+        #self.descriptor.describe(self.preprocessor.process_steps['binary'])
         #self.preprocess_combo.setCurrentIndex(self.preprocess_combo.count())
 
     def reset_views(self):
         self.preprocess_combo.clear()
-        self.preprocess_label.clear().a
+        self.preprocess_label.clear()
 
 def main():
     app = QApplication(sys.argv)

@@ -18,10 +18,6 @@ class Data(ABC):
     def add_feature(self, species, feature):
         pass
     
-    @abstractmethod        
-    def remove(self, path):
-        pass
-    
     @abstractmethod
     def close(self):
         pass    

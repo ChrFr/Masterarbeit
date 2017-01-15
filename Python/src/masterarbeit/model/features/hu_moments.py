@@ -7,7 +7,7 @@ class HuMoments():
     def describe(self, binary):
         moments = cv2.HuMoments(cv2.moments(binary))
         feature = Feature(self.feature_name)
-        feature.set_values(moments)
+        feature.values = moments
         return feature
     
     

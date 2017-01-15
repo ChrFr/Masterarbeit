@@ -1,26 +1,26 @@
 from masterarbeit.model.backend.data import Data
-import h5py
+import pandas as pd
+import numpy as np
+import datetime
+import os
 
 class HDF5Data(Data):
     def __init__(self):
-        self.h5f = None
+        self.store = None
     
     def open(self, source):
-        self.h5f = h5py.File(source, "w")
+        self.store = pd.get_store(source)
         
-    def get_species(self):        
-        root = self.h5f.get('/')
-        names = list(root.keys())
+    def get_species(self):   
+        # the upper folders represent the names of the species
+        names = [os.path.split(k)[0].strip('/') for k in self.store.keys()]
         return names
     
     def add_feature(self, species, feature):
+        path = '{s}/{f}'.format(s=species,f=feature.name)        
+        now = datetime.datetime.now().strftime("%H:%M:%S-%d.%m.%y")
+        df = pd.DataFrame([feature.values], columns=np.arange(len(feature.values)), index=[now])      
+        self.store.append(path, df)
         
-        path = '{s}/{f}'.format(s=species,f=feature.name)
-        group = self.h5f.require_group(path)
-        group.create_dataset('')
-        
-    def remove(self, path):
-        pass
-        
-    def close(self):
-        pass
+    def close(self):        
+        self.store.close()
