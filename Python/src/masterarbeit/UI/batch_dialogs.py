@@ -1,12 +1,13 @@
 # -*- coding: utf-8 -*-
-
-from masterarbeit.UI.crop_images_ui import Ui_Dialog
-from masterarbeit.UI.progress_ui import Ui_ProgressDialog
-from masterarbeit.model.preprocessor.preprocessor_opencv import Binarize
 from PyQt5.QtWidgets import QDialog
 from PyQt5 import Qt, QtCore, QtGui
 import time, datetime
 import os, re
+
+from masterarbeit.UI.crop_images_ui import Ui_Dialog
+from masterarbeit.UI.progress_ui import Ui_ProgressDialog
+from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV
+from masterarbeit.model.preprocessor.common import mask, crop
 #from masterarbeit.model.preprocessor.opencv_preprocessor import OpenCVPreProcessor
 
 IMAGE_FILTER = 'Images (*.png, *.jpg)'
@@ -67,7 +68,7 @@ class CropDialog(QDialog, Ui_Dialog):
             def __init__ (self, in_out, suffix=None):
                 super(CropThread, self).__init__()
                 self.in_out = in_out
-                self.processor = Binarize
+                self.processor = BinarizeHSV
                 
             def run(self):
                 self.stop_requested = False
@@ -85,7 +86,9 @@ class CropDialog(QDialog, Ui_Dialog):
                     elif re.search('[ü,ä,ö,ß,Ü,Ö,Ä]', input_fp):
                         text = '<font color="red">{f} skipped, Umlaute not supported in OpenCV</font>'.format(f=input_fp)
                     else:
-                        cropped = self.processor.crop(image)
+                        binary = self.processor.process(image)
+                        masked_image = mask(image, binary)
+                        cropped = crop(masked_image)       
                         out_path = os.path.split(output_fp)[0]
                         if not os.path.exists(out_path):
                             os.makedirs(out_path)

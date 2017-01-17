@@ -3,11 +3,13 @@ import sys
 from UI.main_window_ui import Ui_MainWindow
 from PyQt5.QtWidgets import QApplication, QMainWindow
 from collections import OrderedDict
+
 from masterarbeit.model.preprocessor.preprocessor_opencv import Binarize
 from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV
 from masterarbeit.UI.batch_dialogs import (CropDialog, browse_file, 
                                            ALL_FILES_FILTER, IMAGE_FILTER)
 from masterarbeit.model.features.hu_moments import HuMoments
+from masterarbeit.model.preprocessor.common import mask, crop
 import numpy as np
 import cv2
 
@@ -34,21 +36,31 @@ class ImageViewer():
         ----------
         pixel_array : numpy array, array of pixels, colored: each pixel is described by an array with 3 values for rgb-values, else only one value per pixel
         """
+        # expand binary and hsv to rgb color range
         shape = pixel_array.shape
-        # colored
+        if pixel_array.max() <= 1:
+            pixel_array *= 255
+            
+        # only dtype QImage understands (makes strange things if different)
+        desired_dtype = np.uint8
+        if pixel_array.dtype != np.uint8:
+            pixel_array = pixel_array.astype(np.uint8)
+            
         height = shape[0] 
         width = shape[1]
         byte_value = 0
+        # colored image
         if len(shape) == 3:
             imformat = QtGui.QImage.Format_RGB888
-            byte_value = shape[2] * width
-        # greyscale
+            byte_value = shape[2] * width            
+        # greyscale image
         elif len(shape) == 2:
             imformat = QtGui.QImage.Format_Grayscale8  
             
-        #if pixel_array.dtype == 'float64':
-            #imformat = QtGui.QImage.Form
-            ##pixel_array = pixel_array * 255
+        # QImage-API is missing entries for ndarrays
+        # (though it could be handled same way as normal numpy array)
+        if type(pixel_array) == np.ndarray:
+            pixel_array = np.array(pixel_array)
             
         q_image = QtGui.QImage(pixel_array, width, height, byte_value, imformat)        
         self.pixmap = QtGui.QPixmap(q_image)
@@ -78,7 +90,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.setup()
 
     def setup(self):
-        self.preprocessor = Binarize
+        self.preprocessor = BinarizeHSV
         
         self.source_view = ImageViewer(self.source_label)
         self.preprocess_view = ImageViewer(self.preprocess_label)      
@@ -142,7 +154,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def preprocess(self):
         self.preprocess_combo.clear()
         steps = OrderedDict()
-        self.preprocessor.process(self.source_pixels, steps_dict=steps)
+        binary = self.preprocessor.process(self.source_pixels, steps_dict=steps)
+        
+        masked_image = mask(self.source_pixels, binary)
+        cropped = crop(masked_image)   
+        steps['cropped and masked image'] = cropped        
+        
         for name, pixels in steps.items():
             self.preprocess_combo.addItem(name, pixels)
 
