@@ -20,7 +20,7 @@ class HDF5Data(Data):
         
     def get_species(self):   
         # the upper folders represent the names of the species
-        names = [os.path.split(k)[0].strip('/') for k in self.store.keys()]
+        names = [k.split('/')[1] for k in self.store.keys()]
         return names
     
     def add_feature(self, species, feature):
@@ -45,6 +45,10 @@ class HDF5Data(Data):
         now = datetime.datetime.now().strftime("%H:%M:%S-%d.%m.%y")
         entries.loc[index] = [now, feature_table]
         self.store[entries_path] = entries
+        table_path = self.feature_table_path.format(species=species,
+                                                    feature=feature.name,
+                                                    entry=feature_table)
+        #self.store[table_path] = 
         ##df = pd.DataFrame(, index=[now])
         #df = pd.DataFrame([feature.values], columns=np.arange(len(feature.values)), index=[now])      
         #self.store.append(path, df)
