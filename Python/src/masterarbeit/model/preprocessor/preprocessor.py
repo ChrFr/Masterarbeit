@@ -1,15 +1,12 @@
-from abc import ABC, abstractmethod
-
-class PreProcessor(ABC):
+class PreProcessor():
     
-    @abstractmethod    
-    def read(path):
-        pass
-    
-    @abstractmethod    
-    def write(path):
-        pass
-    
-    @abstractmethod    
-    def process(image):
-        pass
+    label = 'None'    
+     
+    def read(self, path):
+        return np.zeros((1024, 768))
+           
+    def write(self, path):
+        return False
+         
+    def process(self, image, steps_dict=None):
+        return np.zeros((1024, 768))

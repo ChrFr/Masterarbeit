@@ -4,7 +4,8 @@ from PyQt5 import Qt, QtCore, QtGui
 import time, datetime
 import os, re
 
-from masterarbeit.UI.crop_images_ui import Ui_Dialog
+from masterarbeit.UI.crop_images_ui import Ui_Dialog as Ui_CropDialog
+from masterarbeit.UI.extract_features_ui import Ui_Dialog as Ui_FeatureDialog
 from masterarbeit.UI.progress_ui import Ui_ProgressDialog
 from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV
 from masterarbeit.model.preprocessor.common import mask, crop
@@ -29,11 +30,16 @@ def browse_folder(title='Select Folder', parent=None):
             parent, title)
     return folder
 
+def seconds_to_hms(seconds):            
+    h, remainder = divmod(seconds, 3600)
+    m, s = divmod(remainder, 60)
+    return h, m, s
 
-class CropDialog(QDialog, Ui_Dialog):
+class CropDialog(QDialog, Ui_CropDialog):
     def __init__(self):          
         QDialog.__init__(self)
         self.setupUi(self)
+        self.setWindowTitle('Image Segmentation & Crop')
         self.setup()
         
     def setup(self):
@@ -45,11 +51,11 @@ class CropDialog(QDialog, Ui_Dialog):
         self.input_images_browse_button.pressed.connect(set_input_images)
         
         # output folder
-        def set_output_folder():
+        def set_input_folder():
             folder = browse_folder('Select Output Folder', parent=self)
             if folder:
                 self.input_folder_edit.setText(folder)         
-        self.input_folder_browse_button.pressed.connect(set_output_folder) 
+        self.input_folder_browse_button.pressed.connect(set_input_folder) 
                 
         # output folder
         def set_output_folder():
@@ -68,13 +74,13 @@ class CropDialog(QDialog, Ui_Dialog):
             def __init__ (self, in_out, suffix=None):
                 super(CropThread, self).__init__()
                 self.in_out = in_out
-                self.processor = BinarizeHSV
+                self.processor = BinarizeHSV()
                 
             def run(self):
                 self.stop_requested = False
                 step = 100 / len(input_files)
                 progress = 0
-                self.status.emit('<b>Start cropping {} files</b><br>'.format(
+                self.status.emit('<b>Cropping {} files...</b><br>'.format(
                     len(input_files)), 0)                
                 for input_fp, output_fp in self.in_out:
                     if self.stop_requested:
@@ -82,22 +88,22 @@ class CropDialog(QDialog, Ui_Dialog):
                     
                     image = self.processor.read(input_fp)
                     if not os.path.exists(input_fp):
-                        text = '<font color="red">{f} skipped, does not exist</font>'.format(f=input_fp)
+                        text = '<font color="red"><i>{f}</i> skipped, does not exist</font>'.format(f=input_fp)
                     elif re.search('[ü,ä,ö,ß,Ü,Ö,Ä]', input_fp):
-                        text = '<font color="red">{f} skipped, Umlaute not supported in OpenCV</font>'.format(f=input_fp)
+                        text = '<font color="red"><i>{f}</i> skipped, Umlaute not supported in OpenCV</font>'.format(f=input_fp)
                     else:
                         binary = self.processor.process(image)
                         masked_image = mask(image, binary)
-                        cropped = crop(masked_image)       
+                        cropped = crop(masked_image, border=5)       
                         out_path = os.path.split(output_fp)[0]
                         if not os.path.exists(out_path):
                             os.makedirs(out_path)
                         success = self.processor.write(cropped, output_fp)                        
                         if success:
-                            text = '{f} cropped and written to {o}'.format(
+                            text = '<i>{f}</i> cropped and written to <i>{o}</i>'.format(
                                 f=input_fp, o=output_fp)
                         else:
-                            text = '<font color="red">could not write to {o}</font>'.format(o=output_fp)
+                            text = '<font color="red">could not write to <i>{o}</i></font>'.format(o=output_fp)
                     progress += step
                     self.status.emit(text, progress)
                     
@@ -133,6 +139,99 @@ class CropDialog(QDialog, Ui_Dialog):
         diag = ProgressDialog(CropThread(in_out, suffix))
         diag.exec_()
         
+class FeatureDialog(QDialog, Ui_FeatureDialog):
+    
+    def __init__(self):          
+        QDialog.__init__(self)
+        self.setupUi(self)
+        self.setWindowTitle('Extract Features')
+        self.setup()
+        
+    def setup(self):
+        # input images
+        def set_input_images():
+            files = browse_file('Select Input Files', multiple=True, parent=self)
+            if len(files) > 0:
+                self.images_edit.setText(';'.join(files))                
+        self.images_browse_button.pressed.connect(set_input_images)
+        
+        
+        self.start_button.pressed.connect(self.start)
+        self.close_button.pressed.connect(self.close)
+        
+    def start(self):
+        
+        class FeatureThread(ProgressThread):
+            
+            def __init__ (self, files, suffix=None):
+                super(FeatureThread, self).__init__()
+                self.files = files
+                self.processor = BinarizeHSV()
+                
+            def run(self):
+                self.stop_requested = False
+                step = 100 / len(input_files)
+                progress = 0
+                self.status.emit('<b>Extracting features out of {} files...</b><br>'.format(
+                    len(input_files)), 0)                
+                for input_fp in self.files:
+                    if self.stop_requested:
+                        break
+                    
+                    image = self.processor.read(input_fp)
+                    if not os.path.exists(input_fp):
+                        text = '<font color="red"><i>{f}</i> skipped, does not exist</font>'.format(f=input_fp)
+                    elif re.search('[ü,ä,ö,ß,Ü,Ö,Ä]', input_fp):
+                        text = '<font color="red"><i>{f}</i> skipped, Umlaute not supported in OpenCV</font>'.format(f=input_fp)
+                    else:
+                        binary = self.processor.process(image)
+                        masked_image = mask(image, binary)
+                        cropped = crop(masked_image, border=5)       
+                        out_path = os.path.split(output_fp)[0]
+                        if not os.path.exists(out_path):
+                            os.makedirs(out_path)
+                        success = self.processor.write(cropped, output_fp)                        
+                        if success:
+                            text = '<i>{f}</i> cropped and written to <i>{o}</i>'.format(
+                                f=input_fp, o=output_fp)
+                        else:
+                            text = '<font color="red">could not write to <i>{o}</i></font>'.format(o=output_fp)
+                    progress += step
+                    self.status.emit(text, progress)
+                    
+            def process_file(input_file, output_file):
+                pass
+        
+        input_files = []
+        output_files = []
+        output_folder = self.output_folder_edit.text()  
+        if not self.input_folder_check.isChecked():            
+            input_files = self.input_images_edit.text().split(';')
+        else: 
+            input_folder = self.input_folder_edit.text()
+            for root, subfolders, files in os.walk(input_folder):
+                for file in files:
+                    fn, ext = os.path.splitext(file)
+                    if ext.lower() == '.jpg':
+                        input_files.append(os.path.join(root,file))
+        for input_file in input_files:
+            path, input_fn = os.path.split(input_file)            
+            f, ext = os.path.splitext(input_fn)
+            subfolder = ''
+            suffix = ''
+            if self.suffix_check.isChecked():
+                suffix = self.suffix_edit.text() 
+            output_fn = f + suffix + ext
+            if self.input_folder_check.isChecked():
+                subfolder = os.path.relpath(path, input_folder)
+            output_fp = os.path.join(output_folder, subfolder, output_fn) 
+            output_files.append(output_fp)
+            
+        in_out = zip(input_files, output_files)
+        
+        diag = ProgressDialog(CropThread(in_out, suffix))
+        diag.exec_() 
+                
 class ProgressThread(QtCore.QThread):
     status = QtCore.pyqtSignal(str, int)
     stop_requested = False
@@ -174,6 +273,8 @@ class ProgressDialog(QDialog, Ui_ProgressDialog):
         self.start_time = datetime.datetime.now()
         self.timer.start(1000)
         self.progress_bar.setValue(0)
+        self.last_update = 0
+        self.estimated = (0, 0, 0)
         self.start_button.setEnabled(False)
         self.cancel_button.setText('Stop')
         self.cancel_button.clicked.disconnect(self.close)
@@ -207,8 +308,14 @@ class ProgressDialog(QDialog, Ui_ProgressDialog):
             self.progress_bar.setValue(progress)
 
     def _update_timer(self):
+        progress = self.progress_bar.value()
         delta = datetime.datetime.now() - self.start_time
-        h, remainder = divmod(delta.seconds, 3600)
-        m, s = divmod(remainder, 60)
-        timer_text = '{:02d}:{:02d}:{:02d}'.format(h, m, s)
+        h, m, s = seconds_to_hms(delta.seconds)
+        if self.last_update != progress:
+            self.last_update = progress
+            est_seconds = delta.seconds * 100 / progress
+            self.estimated = seconds_to_hms(int(est_seconds))
+        est_h, est_m, est_s = self.estimated
+        timer_text = '{:02d}:{:02d}:{:02d} (est.: {:02d}:{:02d}:{:02d})'.format(
+            h, m, s, est_h, est_m, est_s)
         self.elapsed_time_label.setText(timer_text)

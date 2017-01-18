@@ -4,14 +4,17 @@ from UI.main_window_ui import Ui_MainWindow
 from PyQt5.QtWidgets import QApplication, QMainWindow
 from collections import OrderedDict
 
-from masterarbeit.model.preprocessor.preprocessor_opencv import Binarize
-from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV
+from masterarbeit.model.preprocessor.preprocessor_opencv import OpenCVPreProcessor, Binarize, SegmentVeinsGabor
+from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV, SegmentGabor
 from masterarbeit.UI.batch_dialogs import (CropDialog, browse_file, 
                                            ALL_FILES_FILTER, IMAGE_FILTER)
 from masterarbeit.model.features.hu_moments import HuMoments
 from masterarbeit.model.preprocessor.common import mask, crop
 import numpy as np
 import cv2
+
+PRE_PROCESSORS = (Binarize, BinarizeHSV, SegmentGabor, SegmentVeinsGabor)
+DESCRIPTORS = (HuMoments)
 
 class ImageViewer():
     """
@@ -40,6 +43,7 @@ class ImageViewer():
         shape = pixel_array.shape
         if pixel_array.max() <= 1:
             pixel_array *= 255
+            pixel_array = np.rint(pixel_array)
             
         # only dtype QImage understands (makes strange things if different)
         desired_dtype = np.uint8
@@ -87,10 +91,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         QMainWindow.__init__(self)
         self.setupUi(self)
+        self.source_pixels = None
         self.setup()
 
     def setup(self):
-        self.preprocessor = BinarizeHSV
         
         self.source_view = ImageViewer(self.source_label)
         self.preprocess_view = ImageViewer(self.preprocess_label)      
@@ -125,6 +129,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         self.actionCrop_Images.triggered.connect(lambda: CropDialog().exec_())
         self.actionExit.triggered.connect(Qt.qApp.quit)      
+                
+        for processor in PRE_PROCESSORS:
+            self.preprocessor_combo.addItem(processor.label, processor)                   
 
     # called on events connected via installFilterEvent
     def eventFilter(self, object, event):
@@ -148,20 +155,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not filename:
             return
         self.reset_views()
-        self.source_pixels = self.preprocessor.read(filename)
+        self.source_pixels = OpenCVPreProcessor.read(filename)
         self.source_view.draw_pixels(self.source_pixels)     
 
     def preprocess(self):
+        if self.source_pixels is None:
+            return
         self.preprocess_combo.clear()
         steps = OrderedDict()
-        binary = self.preprocessor.process(self.source_pixels, steps_dict=steps)
+        index = self.preprocessor_combo.currentIndex()
+        preprocessor = self.preprocessor_combo.itemData(index)()
+        binary = preprocessor.process(self.source_pixels, steps_dict=steps)
         
-        masked_image = mask(self.source_pixels, binary)
-        cropped = crop(masked_image)   
-        steps['cropped and masked image'] = cropped        
+        #masked_image = mask(self.source_pixels, binary)
+        #cropped = crop(masked_image, border=5)
+        #steps['cropped and masked image'] = cropped        
         
         for name, pixels in steps.items():
-            self.preprocess_combo.addItem(name, pixels)
+            self.preprocess_combo.addItem(name, pixels)            
+        self.preprocess_combo.setCurrentIndex(self.preprocess_combo.count() - 1)
 
         #self.descriptor.describe(self.preprocessor.process_steps['binary'])
         #self.preprocess_combo.setCurrentIndex(self.preprocess_combo.count())

@@ -6,8 +6,7 @@ from masterarbeit.model.preprocessor.preprocessor import PreProcessor
 
 class OpenCVPreProcessor(PreProcessor):
     
-    @staticmethod
-    def read(filename):     
+    def read(self, filename):     
         """
         read image from file
         
@@ -18,22 +17,23 @@ class OpenCVPreProcessor(PreProcessor):
         pixel_array = cv2.imread(filename, cv2.IMREAD_COLOR) 
         cv2.cvtColor(pixel_array, cv2.COLOR_BGR2RGB, pixel_array)
         return pixel_array    
-    
-    @staticmethod    
-    def write(image, filename):
+      
+    def write(self, image, filename):
         pixels = image.copy()
         cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR, pixels)
         success = cv2.imwrite(filename, pixels)
         return success
         
 
-class Binarize(OpenCVPreProcessor):
+class Binarize(OpenCVPreProcessor):    
+    
+    label = 'Binarize image with Otsu-Thresholding (OpenCV)'    
     
     def __init__(self):
         self.source_pixels = None
         self.processed_pixels = None
     
-    def _mask(image, mask):
+    def _mask(self, image, mask):
         masked_source = image.copy()
         
         # colored (3 values per pixel)
@@ -74,9 +74,8 @@ class Binarize(OpenCVPreProcessor):
     
     def segment(self):
         return self.source_pixels
-    
-    @staticmethod      
-    def process(image, steps_dict=None):
+          
+    def process(self, image, steps_dict=None):
         binary, mask = binarize(image)
         #masked_source = self._mask(image)
         if steps_dict is not None:
@@ -85,7 +84,7 @@ class Binarize(OpenCVPreProcessor):
         #cropped = scale_to_bounding_box(binary.copy(), masked_source)
         return binary
     
-    def crop(image):
+    def crop(self, image):
         binary, mask = binarize(image)
         masked_source = Binarize._mask(image, mask)        
         cropped = scale_to_bounding_box(binary, masked_source)     
@@ -93,8 +92,8 @@ class Binarize(OpenCVPreProcessor):
         
     def segment_veins(self):
         
-        grey = cv2.cvtColor(self.source_pixels, cv2.COLOR_RGB2GRAY)   
-        gabor = gabor(grey)           
+        gray = cv2.cvtColor(self.source_pixels, cv2.COLOR_RGB2GRAY)   
+        gabor = gabor(gray)           
         
         #lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
         #lines = lsd.detect(gabor)
@@ -105,8 +104,47 @@ class Binarize(OpenCVPreProcessor):
         kernel = np.ones((3,3),np.uint8)
         erosion = cv2.erode(thresh, kernel, iterations = 5)
         dilation = cv2.dilate(erosion, kernel, iterations = 5)  
-        
+
+class SegmentVeinsGabor(OpenCVPreProcessor):   
+    label = 'Segment leaf veins with Gabor (OpenCV)'    
+     
+    def gabor(self, image):
     
+        def build_filters():
+            filters = []
+            ksize = 31
+            for theta in np.arange(0, np.pi, np.pi / 16):
+                kern = cv2.getGaborKernel((ksize, ksize), 4.0, theta, 10.0, 0.5, 0, ktype=cv2.CV_32F)
+                kern /= 1.5*kern.sum()
+                filters.append(kern)
+            return filters
+    
+        def process(img, filters):
+            accum = np.zeros_like(img)
+            for kern in filters:
+                fimg = cv2.filter2D(img, cv2.CV_8UC3, kern)
+                np.maximum(accum, fimg, accum)
+            return accum        
+    
+        filters = build_filters()
+    
+        res1 = process(image, filters)
+    
+        return res1     
+       
+    def process(self, image, steps_dict=None):
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)    
+        gabor = self.gabor(gray)        
+        lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
+        lines = lsd.detect(gabor)
+        line_img = lsd.drawSegments(np.empty(gray.shape), lines[0])
+        #masked_source = self._mask(image)
+        if steps_dict is not None:
+            steps_dict['gabor'] = gabor
+            steps_dict['lines'] = line_img
+            #steps_dict['masked source'] = masked_source    
+        #cropped = scale_to_bounding_box(binary.copy(), masked_source)
+        return gabor    
     
 def binarize(image):
     #self.processed_pixels = cv2.GaussianBlur(self.processed_pixels, (5,5), 0)
@@ -129,27 +167,3 @@ def scale_to_bounding_box(binary, image):
     x,y,w,h = cv2.boundingRect(contours[0])
     cropped = image[y: y + h, x: x + w]
     return cropped.copy()    
-
-def gabor(image):
-
-    def build_filters():
-        filters = []
-        ksize = 31
-        for theta in np.arange(0, np.pi, np.pi / 16):
-            kern = cv2.getGaborKernel((ksize, ksize), 4.0, theta, 10.0, 0.5, 0, ktype=cv2.CV_32F)
-            kern /= 1.5*kern.sum()
-            filters.append(kern)
-        return filters
-
-    def process(img, filters):
-        accum = np.zeros_like(img)
-        for kern in filters:
-            fimg = cv2.filter2D(img, cv2.CV_8UC3, kern)
-            np.maximum(accum, fimg, accum)
-        return accum        
-
-    filters = build_filters()
-
-    res1 = process(image, filters)
-
-    return res1        

@@ -2,11 +2,11 @@ import cv2
 from masterarbeit.model.features.feature import Feature
 
 class HuMoments():
-    feature_name = 'Hu-moments'
+    label = 'Hu-Moments'
     
     def describe(self, binary):
         moments = cv2.HuMoments(cv2.moments(binary))
-        feature = Feature(self.feature_name)
+        feature = Feature(self.label)
         feature.values = moments
         return feature
     

@@ -21,7 +21,11 @@ def bounding_box(binary):
 
     return xmin, ymin, xmax, ymax
 
-def crop(image):    
+def crop(image, border=0):    
     x1, y1, x2, y2 = bounding_box(image)
+    x1 = max(x1 - border, 0)
+    y1 = max(y1 - border, 0)
+    x2 = min(x2 + border, image.shape[1])
+    y2 = min(y2 + border, image.shape[0])
     cropped = image[y1: y2, x1: x2]
     return cropped
