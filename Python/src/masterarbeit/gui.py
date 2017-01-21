@@ -3,18 +3,16 @@ import sys
 from UI.main_window_ui import Ui_MainWindow
 from PyQt5.QtWidgets import QApplication, QMainWindow
 from collections import OrderedDict
-
-from masterarbeit.model.preprocessor.preprocessor_opencv import OpenCVPreProcessor, Binarize, SegmentVeinsGabor
-from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV, SegmentGabor
-from masterarbeit.UI.batch_dialogs import (CropDialog, browse_file, 
-                                           ALL_FILES_FILTER, IMAGE_FILTER)
-from masterarbeit.model.features.hu_moments import HuMoments
-from masterarbeit.model.preprocessor.common import mask, crop
 import numpy as np
 import cv2
 
-PRE_PROCESSORS = (Binarize, BinarizeHSV, SegmentGabor, SegmentVeinsGabor)
-DESCRIPTORS = (HuMoments)
+from masterarbeit.UI.batch_dialogs import (CropDialog, FeatureDialog,
+                                           browse_file)
+
+from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
+from masterarbeit.config import PRE_PROCESSORS
+from masterarbeit.config import DESCRIPTORS
+from masterarbeit.model.preprocessor.common import mask, crop, read_image
 
 class ImageViewer():
     """
@@ -97,7 +95,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     def setup(self):
         
         self.source_view = ImageViewer(self.source_label)
-        self.preprocess_view = ImageViewer(self.preprocess_label)      
+        self.preprocess_view = ImageViewer(self.preprocess_label) 
+        
+        ### PREPROCESSING VIEW ###        
 
         # drag and drop images into source view, will be handled by self.eventFilter
         self.source_image_scroll.setAcceptDrops(True)
@@ -127,7 +127,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             )
         )
 
+        ### MENU ###
+        
         self.actionCrop_Images.triggered.connect(lambda: CropDialog().exec_())
+        self.actionExtract_Features.triggered.connect(
+            lambda: FeatureDialog().exec_())
         self.actionExit.triggered.connect(Qt.qApp.quit)      
                 
         for processor in PRE_PROCESSORS:
@@ -155,7 +159,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if not filename:
             return
         self.reset_views()
-        self.source_pixels = OpenCVPreProcessor.read(filename)
+        self.source_pixels = read_image(filename)
         self.source_view.draw_pixels(self.source_pixels)     
 
     def preprocess(self):

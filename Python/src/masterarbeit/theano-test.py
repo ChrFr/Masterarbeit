@@ -1,6 +1,7 @@
 import numpy as np
 import time
 import theano
+#theano.compat.decode_iter
 A = np.random.rand(1000,10000).astype(theano.config.floatX)
 B = np.random.rand(10000,1000).astype(theano.config.floatX)
 np_start = time.time()

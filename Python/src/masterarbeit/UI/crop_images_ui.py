@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-# Form implementation generated from reading ui file 'crop_images.ui'
+# Form implementation generated from reading ui file 'qt/crop_images.ui'
 #
 # Created by: PyQt5 UI code generator 5.6
 #

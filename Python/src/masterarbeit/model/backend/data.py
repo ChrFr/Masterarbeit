@@ -15,7 +15,7 @@ class Data(ABC):
         pass    
     
     @abstractmethod    
-    def add_feature(self, species, feature):
+    def add_features(self, species, feature):
         pass
     
     @abstractmethod

@@ -1,4 +1,5 @@
 import numpy as np
+import cv2
     
 def mask(image, binary):
     if len(image.shape) == 3:
@@ -28,4 +29,12 @@ def crop(image, border=0):
     x2 = min(x2 + border, image.shape[1])
     y2 = min(y2 + border, image.shape[0])
     cropped = image[y1: y2, x1: x2]
+    # background white rather than black
+    # (else problems with later repeated binarization)
+    image[image==0] = 255
     return cropped
+
+def read_image(filename):    
+    pixel_array = cv2.imread(filename, cv2.IMREAD_COLOR) 
+    cv2.cvtColor(pixel_array, cv2.COLOR_BGR2RGB, pixel_array)
+    return pixel_array        

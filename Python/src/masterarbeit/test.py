@@ -22,17 +22,21 @@ class TestPreprocessing(unittest.TestCase):
         feature = HuMoments().describe(binary)        
         
     def test1_write_features(self):
-        feature = Feature('Testfeature')
+        f1 = Feature('Testfeature')
+        f2 = Feature('Testfeature')
         h5 = HDF5Data()
         h5.open(self.testfile)        
         
-        for s in self.test_species:            
+        for s in self.test_species:    
+            h5.add_species(s)
         
-            feature.values = np.random.rand(5)        
-            h5.add_feature(s, feature)
+            f1.values = np.random.rand(5)        
+            h5.add_feature(s, f1)
             
-            feature.values = np.random.rand(5)      
-            h5.add_feature(s, feature)
+            f2.values = np.random.rand(5)      
+            h5.add_feature(s, f2)
+            
+            h5.add_features(s, [f1, f2])
             
         h5.close()
             

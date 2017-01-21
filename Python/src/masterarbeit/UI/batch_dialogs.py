@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from PyQt5.QtWidgets import QDialog
+from PyQt5.QtWidgets import QDialog, QInputDialog
 from PyQt5 import Qt, QtCore, QtGui
 import time, datetime
 import os, re
@@ -8,11 +8,11 @@ from masterarbeit.UI.crop_images_ui import Ui_Dialog as Ui_CropDialog
 from masterarbeit.UI.extract_features_ui import Ui_Dialog as Ui_FeatureDialog
 from masterarbeit.UI.progress_ui import Ui_ProgressDialog
 from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV
-from masterarbeit.model.preprocessor.common import mask, crop
-#from masterarbeit.model.preprocessor.opencv_preprocessor import OpenCVPreProcessor
-
-IMAGE_FILTER = 'Images (*.png, *.jpg)'
-ALL_FILES_FILTER = 'All Files(*.*)'
+from masterarbeit.model.preprocessor.preprocessor_opencv import Binarize
+from masterarbeit.model.preprocessor.common import mask, crop, read_image
+from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
+from masterarbeit.model.backend.hdf5_data import HDF5Data
+from masterarbeit.model.features.hu_moments import HuMoments
 
 def browse_file(title='Select File', filters=[ALL_FILES_FILTER], multiple=False, parent=None):
     if multiple:
@@ -145,9 +145,20 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
         QDialog.__init__(self)
         self.setupUi(self)
         self.setWindowTitle('Extract Features')
+        self.data = HDF5Data()
         self.setup()
         
     def setup(self):
+        self.data.open('batch_test.h5')
+        
+        def add_species():
+            name, ok = QInputDialog.getText(self, 'Add Species', 
+                                            'name of species:')
+            if name and ok:
+                self.data.add_species(name)
+            self.update_species()            
+        self.add_species_button.pressed.connect(add_species)
+            
         # input images
         def set_input_images():
             files = browse_file('Select Input Files', multiple=True, parent=self)
@@ -155,82 +166,62 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
                 self.images_edit.setText(';'.join(files))                
         self.images_browse_button.pressed.connect(set_input_images)
         
-        
         self.start_button.pressed.connect(self.start)
         self.close_button.pressed.connect(self.close)
+        self.update_species()            
+    
+    def update_species(self):        
+        self.species_combo.clear()
+        species = self.data.get_species() 
+        self.species_combo.addItems(species)     
         
     def start(self):
         
         class FeatureThread(ProgressThread):
             
-            def __init__ (self, files, suffix=None):
+            def __init__ (self, files, species, data):
                 super(FeatureThread, self).__init__()
                 self.files = files
-                self.processor = BinarizeHSV()
+                self.descriptor = HuMoments()
+                self.processor = Binarize()
+                self.data = data
+                self.species = species
                 
             def run(self):
                 self.stop_requested = False
                 step = 100 / len(input_files)
                 progress = 0
-                self.status.emit('<b>Extracting features out of {} files...</b><br>'.format(
+                self.status.emit('<b>Cropping {} files...</b><br>'.format(
                     len(input_files)), 0)                
-                for input_fp in self.files:
+                for input_fp in input_files:
                     if self.stop_requested:
                         break
                     
-                    image = self.processor.read(input_fp)
+                    image = read_image(input_fp)
                     if not os.path.exists(input_fp):
                         text = '<font color="red"><i>{f}</i> skipped, does not exist</font>'.format(f=input_fp)
                     elif re.search('[ü,ä,ö,ß,Ü,Ö,Ä]', input_fp):
-                        text = '<font color="red"><i>{f}</i> skipped, Umlaute not supported in OpenCV</font>'.format(f=input_fp)
+                        text = '<font color="red"><i>{f}</i> skipped, Umlaute not supported</font>'.format(f=input_fp)
                     else:
-                        binary = self.processor.process(image)
-                        masked_image = mask(image, binary)
-                        cropped = crop(masked_image, border=5)       
-                        out_path = os.path.split(output_fp)[0]
-                        if not os.path.exists(out_path):
-                            os.makedirs(out_path)
-                        success = self.processor.write(cropped, output_fp)                        
-                        if success:
-                            text = '<i>{f}</i> cropped and written to <i>{o}</i>'.format(
-                                f=input_fp, o=output_fp)
-                        else:
-                            text = '<font color="red">could not write to <i>{o}</i></font>'.format(o=output_fp)
+                        binary = self.processor.process(image)  
+                        moments = self.descriptor.describe(binary)
+                        self.data.add_feature(self.species, moments)
+                        text = '<i>{f}</i> processed'.format(f=input_fp)
                     progress += step
                     self.status.emit(text, progress)
                     
             def process_file(input_file, output_file):
                 pass
         
-        input_files = []
-        output_files = []
-        output_folder = self.output_folder_edit.text()  
-        if not self.input_folder_check.isChecked():            
-            input_files = self.input_images_edit.text().split(';')
-        else: 
-            input_folder = self.input_folder_edit.text()
-            for root, subfolders, files in os.walk(input_folder):
-                for file in files:
-                    fn, ext = os.path.splitext(file)
-                    if ext.lower() == '.jpg':
-                        input_files.append(os.path.join(root,file))
-        for input_file in input_files:
-            path, input_fn = os.path.split(input_file)            
-            f, ext = os.path.splitext(input_fn)
-            subfolder = ''
-            suffix = ''
-            if self.suffix_check.isChecked():
-                suffix = self.suffix_edit.text() 
-            output_fn = f + suffix + ext
-            if self.input_folder_check.isChecked():
-                subfolder = os.path.relpath(path, input_folder)
-            output_fp = os.path.join(output_folder, subfolder, output_fn) 
-            output_files.append(output_fp)
-            
-        in_out = zip(input_files, output_files)
-        
-        diag = ProgressDialog(CropThread(in_out, suffix))
+        input_files = []        
+        input_files = self.images_edit.text().split(';')
+        species = self.species_combo.currentText()
+        diag = ProgressDialog(FeatureThread(input_files, species, self.data))
         diag.exec_() 
+        
+    def close(self):       
+        self.data.close()      
+        super(FeatureDialog, self).close()
                 
 class ProgressThread(QtCore.QThread):
     status = QtCore.pyqtSignal(str, int)
