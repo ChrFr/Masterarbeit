@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from PyQt5.QtWidgets import QDialog, QInputDialog
+from PyQt5.QtWidgets import QDialog, QInputDialog, QListWidgetItem, QCheckBox
 from PyQt5 import Qt, QtCore, QtGui
 import time, datetime
 import os, re
@@ -10,9 +10,8 @@ from masterarbeit.UI.progress_ui import Ui_ProgressDialog
 from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV
 from masterarbeit.model.preprocessor.preprocessor_opencv import Binarize
 from masterarbeit.model.preprocessor.common import mask, crop, read_image
-from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
-from masterarbeit.model.backend.hdf5_data import HDF5Data
-from masterarbeit.model.features.hu_moments import HuMoments
+from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER, FEATURES)
+from masterarbeit.model.backend.hdf5_data import HDF5Pandas
 
 def browse_file(title='Select File', filters=[ALL_FILES_FILTER], multiple=False, parent=None):
     if multiple:
@@ -145,7 +144,7 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
         QDialog.__init__(self)
         self.setupUi(self)
         self.setWindowTitle('Extract Features')
-        self.data = HDF5Data()
+        self.data = HDF5Pandas()
         self.setup()
         
     def setup(self):
@@ -154,9 +153,12 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
         def add_species():
             name, ok = QInputDialog.getText(self, 'Add Species', 
                                             'name of species:')
-            if name and ok:
-                self.data.add_species(name)
-            self.update_species()            
+            if name and ok:                
+                index = self.species_combo.findText(name, QtCore.Qt.MatchFixedString)
+                if index >= 0:  
+                    return
+                self.species_combo.addItem(name)
+                self.species_combo.setCurrentIndex(self.species_combo.count() - 1 )
         self.add_species_button.pressed.connect(add_species)
             
         # input images
@@ -166,9 +168,17 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
                 self.images_edit.setText(';'.join(files))                
         self.images_browse_button.pressed.connect(set_input_images)
         
+        # available features
+        for feature in FEATURES:
+            item = QListWidgetItem(self.features_list)
+            checkbox = QCheckBox(feature.label)
+            checkbox.setTristate(False)
+            checkbox.setChecked(True)
+            self.features_list.setItemWidget(item, checkbox)             
+        
         self.start_button.pressed.connect(self.start)
         self.close_button.pressed.connect(self.close)
-        self.update_species()            
+        self.update_species()
     
     def update_species(self):        
         self.species_combo.clear()
@@ -179,20 +189,22 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
         
         class FeatureThread(ProgressThread):
             
-            def __init__ (self, files, species, data):
+            def __init__ (self, files, species, data, feature_types, replace=False):
                 super(FeatureThread, self).__init__()
                 self.files = files
-                self.descriptor = HuMoments()
                 self.processor = Binarize()
                 self.data = data
                 self.species = species
+                self.feature_types = feature_types
+                self.replace = replace
                 
             def run(self):
                 self.stop_requested = False
                 step = 100 / len(input_files)
                 progress = 0
-                self.status.emit('<b>Cropping {} files...</b><br>'.format(
-                    len(input_files)), 0)                
+                self.status.emit('<b>Extracting features from {} files...</b><br>'.format(
+                    len(input_files)), 0)          
+                features = []      
                 for input_fp in input_files:
                     if self.stop_requested:
                         break
@@ -204,19 +216,41 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
                         text = '<font color="red"><i>{f}</i> skipped, Umlaute not supported</font>'.format(f=input_fp)
                     else:
                         binary = self.processor.process(image)  
-                        moments = self.descriptor.describe(binary)
-                        self.data.add_feature(self.species, moments)
-                        text = '<i>{f}</i> processed'.format(f=input_fp)
-                    progress += step
-                    self.status.emit(text, progress)
+                        for feat_type in self.feature_types:
+                            feat = feat_type()
+                            feat.extract(binary)
+                            features.append(feat)
+                            text = '{feature} extracted from <i>{file}</i>'.format(
+                                feature=feat.label, file=input_fp)
+                            self.status.emit(text, progress)                                    
+                    progress += step                    
+                self.data.add_features(self.species, features, self.replace)
+                #self.data.commit()
+                text = '{} features'.format(len(features))
+                if self.replace:
+                    text += ' stored, replacing old entries '
+                else:
+                    text += ' appended to store '
+                text += ' of species {}'.format(self.species)
+                self.status.emit(text, 100) 
                     
             def process_file(input_file, output_file):
                 pass
         
-        input_files = []        
-        input_files = self.images_edit.text().split(';')
+        features = []
+        for index in range(self.features_list.count()):
+            checkbox = self.features_list.itemWidget(self.features_list.item(index))
+            if checkbox.isChecked():
+                features.append(FEATURES[index])
+        input_files = []   
+        image_txt =  self.images_edit.text()
+        if len(features) == 0 or len(image_txt) == 0:
+            return
+        input_files = image_txt.split(';')
         species = self.species_combo.currentText()
-        diag = ProgressDialog(FeatureThread(input_files, species, self.data))
+        replace = self.replace_check.isChecked()
+        diag = ProgressDialog(FeatureThread(input_files, species, self.data, 
+                                            features, replace=replace))
         diag.exec_() 
         
     def close(self):       

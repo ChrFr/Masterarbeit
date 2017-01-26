@@ -1,13 +1,19 @@
 import numpy as np
+from abc import ABCMeta
+from abc import abstractmethod
 
 class Feature():   
-    def __init__(self, name):
-        self.name = name
-        self._v = np.empty(0) 
+    label = 'None'    
+    columns = []    
+    category = None
+    
+    def __init__(self, species):
+        self._v = np.empty(self.length) 
+        self.species = species
         
     @property
-    def shape(self):
-        return self._v.shape
+    def length(self):
+        return len(self.columns)
     
     @property    
     def values(self):
@@ -15,4 +21,14 @@ class Feature():
     
     @values.setter    
     def values(self, values):
+        values = values.flatten()
+        if len(values) != self.length:
+            raise Exception('expected length of feature mismatches ' +
+                            'length of extracted values! ({}!={})'.format(
+                                self.length, len(values)
+                            ))
         self._v = values
+        
+    @abstractmethod
+    def extract(self, image):
+        pass

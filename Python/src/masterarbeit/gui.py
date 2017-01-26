@@ -11,7 +11,7 @@ from masterarbeit.UI.batch_dialogs import (CropDialog, FeatureDialog,
 
 from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
 from masterarbeit.config import PRE_PROCESSORS
-from masterarbeit.config import DESCRIPTORS
+from masterarbeit.config import FEATURES
 from masterarbeit.model.preprocessor.common import mask, crop, read_image
 
 class ImageViewer():

@@ -26,11 +26,12 @@ def mlp_evaluation():
     encoded_Y = encoder.transform(Y)
     # convert integers to dummy variables (i.e. one hot encoded)
     dummy_y = np_utils.to_categorical(encoded_Y)
+    input_dim = len(np.unique(Y))
     
     def baseline_model():
         # create model
         model = Sequential()
-        model.add(Dense(4, input_dim=4, init='normal', activation='relu'))
+        model.add(Dense(4, input_dim=input_dim, init='normal', activation='relu'))
         model.add(Dense(3, init='normal', activation='sigmoid'))
         # Compile model
         model.compile(loss='categorical_crossentropy', optimizer='adam', metrics=['accuracy'])
@@ -53,6 +54,7 @@ def mlp():
     iris = sns.load_dataset("iris")
     sns.set(style="ticks", color_codes=True)
     g = sns.pairplot(iris, hue="species")
+    sns.plt.show()
     # fix random seed for reproducibility
     seed = 7
     numpy.random.seed(seed)
@@ -89,4 +91,4 @@ def mlp():
     
 
 if __name__ == '__main__':
-    mlp()
+    mlp_evaluation()
