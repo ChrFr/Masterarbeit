@@ -13,7 +13,8 @@ def mask(image, binary):
 def bounding_box(binary):
     '''
     returns bounding box of given binary image (aroud all pixels != 0)
-    (x1, y1, x2, y2) where (x1,y1) is upper left point and (x2, y2) lower right point of bounding box and
+    (x1, y1, x2, y2) where (x1,y1) is upper left point and (x2, y2) lower right 
+    point of bounding box
     '''
     rows = np.any(binary, axis=1)
     cols = np.any(binary, axis=0)

@@ -6,13 +6,13 @@ from collections import OrderedDict
 import numpy as np
 import cv2
 
-from masterarbeit.UI.batch_dialogs import (CropDialog, FeatureDialog,
-                                           browse_file)
-
+from masterarbeit.config import Config
 from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
 from masterarbeit.config import PRE_PROCESSORS
 from masterarbeit.config import FEATURES
 from masterarbeit.model.preprocessor.common import mask, crop, read_image
+from masterarbeit.UI.dialogs import (CropDialog, FeatureDialog, SettingsDialog,
+                                  browse_file)
 
 class ImageViewer():
     """
@@ -90,9 +90,23 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         QMainWindow.__init__(self)
         self.setupUi(self)
         self.source_pixels = None
-        self.setup()
+        self.config = Config()
+        
+        ### MENU ###
+        
+        self.actionCrop_Images.triggered.connect(
+            lambda: CropDialog(parent=self).exec_())
+        self.actionExtract_Features.triggered.connect(
+            lambda: FeatureDialog(parent=self).exec_())
+        
+        self.actionSettings.triggered.connect(
+            lambda: SettingsDialog(parent=self).exec_())           
+        self.actionExit.triggered.connect(Qt.qApp.quit)   
+        
+        self.setup_preprocessing()     
+        self.setup_training()
 
-    def setup(self):
+    def setup_preprocessing(self):
         
         self.source_view = ImageViewer(self.source_label)
         self.preprocess_view = ImageViewer(self.preprocess_label) 
@@ -101,7 +115,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
 
         # drag and drop images into source view, will be handled by self.eventFilter
         self.source_image_scroll.setAcceptDrops(True)
-        self.source_image_scroll.installEventFilter(self)
+        self.source_image_scroll.installEventFilter(self)    
 
         # zoom on slider change
         def zoom_changed(factor):
@@ -113,30 +127,32 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         def image_selected(index):
             if index < 0:
                 return
-            pixels = self.preprocess_combo.itemData(index)
+            pixels = self.preprocess_steps_combo.itemData(index)
             self.preprocess_view.draw_pixels(pixels)        
-        self.preprocess_combo.currentIndexChanged.connect(image_selected)
+        self.preprocess_steps_combo.currentIndexChanged.connect(image_selected)
 
-        self.preprocess_button.pressed.connect(self.preprocess)      
-
-        self.actionOpen_Image.triggered.connect(
-            lambda: self.load_image(
+        self.preprocess_button.pressed.connect(self.preprocess) 
+        
+        def open_image():
+            self.load_source_image(
                 browse_file(title='Choose Image', 
                             filters=[IMAGE_FILTER, ALL_FILES_FILTER],
                             parent=self)
-            )
-        )
+            )            
 
-        ### MENU ###
-        
-        self.actionCrop_Images.triggered.connect(lambda: CropDialog().exec_())
-        self.actionExtract_Features.triggered.connect(
-            lambda: FeatureDialog().exec_())
-        self.actionExit.triggered.connect(Qt.qApp.quit)      
-                
+        self.actionOpen_Image.triggered.connect(open_image)
+        self.open_source_button.pressed.connect(open_image)
+                 
         for processor in PRE_PROCESSORS:
             self.preprocessor_combo.addItem(processor.label, processor)                   
 
+    def load_source_image(self, filename):
+        if not filename:
+            return
+        self.reset_views()
+        self.source_pixels = read_image(filename)
+        self.source_view.draw_pixels(self.source_pixels)    
+        
     # called on events connected via installFilterEvent
     def eventFilter(self, object, event):
         if (object is self.source_image_scroll):
@@ -151,21 +167,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 # if dropped item has url -> extract filename 
                 if event.mimeData().hasUrls():  
                     filename = event.mimeData().urls()[0].toLocalFile()
-                    self.load_image(filename)
+                    self.load_source_image(filename)
                     return True
-            return False
-
-    def load_image(self, filename):
-        if not filename:
-            return
-        self.reset_views()
-        self.source_pixels = read_image(filename)
-        self.source_view.draw_pixels(self.source_pixels)     
+            return False        
+        
+    def setup_training(self):
+        pass
+ 
+    def update_feature_list(self):
+        pass
 
     def preprocess(self):
         if self.source_pixels is None:
             return
-        self.preprocess_combo.clear()
+        self.preprocess_steps_combo.clear()
         steps = OrderedDict()
         index = self.preprocessor_combo.currentIndex()
         preprocessor = self.preprocessor_combo.itemData(index)()
@@ -176,14 +191,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         #steps['cropped and masked image'] = cropped        
         
         for name, pixels in steps.items():
-            self.preprocess_combo.addItem(name, pixels)            
-        self.preprocess_combo.setCurrentIndex(self.preprocess_combo.count() - 1)
+            self.preprocess_steps_combo.addItem(name, pixels)            
+        self.preprocess_steps_combo.setCurrentIndex(
+            self.preprocess_steps_combo.count() - 1)
 
         #self.descriptor.describe(self.preprocessor.process_steps['binary'])
         #self.preprocess_combo.setCurrentIndex(self.preprocess_combo.count())
 
     def reset_views(self):
-        self.preprocess_combo.clear()
+        self.preprocess_steps_combo.clear()
         self.preprocess_label.clear()
 
 def main():

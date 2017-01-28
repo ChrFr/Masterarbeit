@@ -11,11 +11,11 @@ class Data(ABC):
         pass
     
     @abstractmethod        
-    def get_species(self):        
+    def get_categories(self):        
         pass    
     
     @abstractmethod    
-    def add_features(self, species, feature):
+    def add_features(self, category, feature):
         pass
     
     @abstractmethod

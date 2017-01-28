@@ -9,7 +9,7 @@ def plot(feature_frame):
     #del feature_frame['species']
     #feature_frame = (feature_frame - feature_frame.mean()) / (feature_frame.max() - feature_frame.min())
     #feature_frame['species'] = species
-    g = sns.pairplot(feature_frame, hue="species")
+    g = sns.pairplot(feature_frame, hue="category")
     sns.plt.show()
 
 if __name__ == '__main__':      
