@@ -2,7 +2,7 @@ from masterarbeit.model.classifiers.classifier import Classifier
 
 class SVM(Classifier):   
     
-    def setup(self, input_dim):
+    def setup_model(self, input_dim):
         pass
     
     def train(self, image):

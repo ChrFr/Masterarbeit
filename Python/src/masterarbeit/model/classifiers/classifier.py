@@ -4,14 +4,15 @@ from abc import abstractmethod
 
 class Classifier(metaclass=ABCMeta):   
     
-    label = 'None'    
-    columns = []      
+    label = 'None'
+    columns = []    
+    model = None
     
     def __init__(self, name):
         self.name = name
         
     @abstractmethod
-    def setup(self, input_dim):
+    def setup_model(self, input_dim):
         pass
     
     @abstractmethod        

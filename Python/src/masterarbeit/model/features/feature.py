@@ -7,9 +7,9 @@ class Feature():
     columns = []    
     category = None
     
-    def __init__(self, species):
+    def __init__(self, category):
         self._v = np.empty(self.length) 
-        self.species = species
+        self.category = category
         
     @property
     def length(self):
