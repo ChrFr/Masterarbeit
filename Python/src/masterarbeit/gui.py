@@ -1,4 +1,4 @@
-from PyQt5 import Qt, QtCore, QtGui, QtWidgets
+from PyQt5 import Qt, QtCore, QtWidgets
 import sys
 from UI.main_window_ui import Ui_MainWindow
 from PyQt5.QtWidgets import QApplication, QMainWindow
@@ -11,86 +11,17 @@ from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
 from masterarbeit.config import PRE_PROCESSORS
 from masterarbeit.config import FEATURES
 from masterarbeit.model.preprocessor.common import mask, crop, read_image
+from masterarbeit.UI.imageview import ImageViewer
 from masterarbeit.UI.dialogs import (CropDialog, FeatureDialog, SettingsDialog,
                                   browse_file)
 
-class ImageViewer():
-    """
-    views and rescales images
-    """
-    def __init__(self, label):    
-        """
-        Parameters
-        ----------
-        label : QLabel, the container for drawing the images into
-        """   
-        self.label = label
-        self.size = self.label.size()
-        self.current_zoom = 1
-        self.pixmap = None
-
-    def draw_pixels(self, pixel_array):
-        """
-        draw image from given pixels (colored or greyscale)
-
-        Parameters
-        ----------
-        pixel_array : numpy array, array of pixels, colored: each pixel is described by an array with 3 values for rgb-values, else only one value per pixel
-        """
-        # expand binary and hsv to rgb color range
-        shape = pixel_array.shape
-        if pixel_array.max() <= 1:
-            pixel_array *= 255
-            pixel_array = np.rint(pixel_array)
-            
-        # only dtype QImage understands (makes strange things if different)
-        desired_dtype = np.uint8
-        if pixel_array.dtype != np.uint8:
-            pixel_array = pixel_array.astype(np.uint8)
-            
-        height = shape[0] 
-        width = shape[1]
-        byte_value = 0
-        # colored image
-        if len(shape) == 3:
-            imformat = QtGui.QImage.Format_RGB888
-            byte_value = shape[2] * width            
-        # greyscale image
-        elif len(shape) == 2:
-            imformat = QtGui.QImage.Format_Grayscale8  
-            
-        # QImage-API is missing entries for ndarrays
-        # (though it could be handled same way as normal numpy array)
-        if type(pixel_array) == np.ndarray:
-            pixel_array = np.array(pixel_array)
-            
-        q_image = QtGui.QImage(pixel_array, width, height, byte_value, imformat)        
-        self.pixmap = QtGui.QPixmap(q_image)
-        self.zoom()       
-
-    def zoom(self, factor=None):
-        """
-        scales and redraws the image
-
-        Parameters
-        ----------
-        size : QSize, width and height the image is scaled to        
-        """        
-        if factor is not None:
-            self.current_zoom = factor
-        if self.pixmap is None:
-            return
-        zoom = QtCore.QSize(self.size.width() * self.current_zoom, self.size.height() * self.current_zoom)
-        scaled = self.pixmap.scaled(zoom, QtCore.Qt.KeepAspectRatio)
-        self.label.setPixmap(scaled)
-
+config = Config()
 
 class MainWindow(QMainWindow, Ui_MainWindow):
     def __init__(self):
         QMainWindow.__init__(self)
         self.setupUi(self)
         self.source_pixels = None
-        self.config = Config()
         
         ### MENU ###
         
@@ -99,9 +30,20 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.actionExtract_Features.triggered.connect(
             lambda: FeatureDialog(parent=self).exec_())
         
-        self.actionSettings.triggered.connect(
-            lambda: SettingsDialog(parent=self).exec_())           
+        ### CONFIGURATION
+        
+        def configure():
+            diag = SettingsDialog(parent=self)
+            result = diag.exec_()
+            if result == QtWidgets.QDialog.Accepted:
+                config.write()
+                self.apply_config()
+        self.actionSettings.triggered.connect(configure)           
         self.actionExit.triggered.connect(Qt.qApp.quit)   
+        
+        self.apply_config()
+        
+        ### MAIN TABS ###
         
         self.setup_preprocessing()     
         self.setup_training()
@@ -145,6 +87,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                  
         for processor in PRE_PROCESSORS:
             self.preprocessor_combo.addItem(processor.label, processor)                   
+
+    def apply_config(self):
+        pass
 
     def load_source_image(self, filename):
         if not filename:

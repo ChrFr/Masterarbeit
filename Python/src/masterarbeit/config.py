@@ -7,38 +7,74 @@ from masterarbeit.model.features.hu_moments import HuMoments
 from masterarbeit.model.features.zernike_moments import ZernikeMoments
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
 
-
 IMAGE_FILTER = 'Images (*.png, *.jpg)'
 ALL_FILES_FILTER = 'All Files(*.*)'
+HDF5_FILTER = 'HDF5 (*.h5)'
 
 PRE_PROCESSORS = (pocv.Binarize, psk.BinarizeHSV, psk.SegmentGabor, 
                   pocv.SegmentVeinsGabor)
 FEATURES = (HuMoments, ZernikeMoments)
-DATA = (HDF5Pandas)
+DATA = [HDF5Pandas]
 
-class Config():  
+
+class Singleton(type):
+    _instances = {}
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            cls._instances[cls] = super(Singleton, cls).__call__(*args, **kwargs)
+        return cls._instances[cls]
+    
+    
+class Config(metaclass=Singleton):  
+    
     config_file = 'config.json'
     
-    _config_dict = {
-        'data': HDF5Pandas.__name__,
-        'source': 'default_store.h5'
+    _default = {
+        'data': HDF5Pandas,
+        'source': os.path.join(os.getcwd(), 'default_store.h5')
         }
+
+    _config = {}
     
     def __init__(self):
         if os.path.exists(self.config_file):            
             self.read()
+        # write default config, if file doesn't exist yet
         else:
-            self.write() # write default config, if file doesn't exist yet
+            self._config = self._default.copy()
+            self.write() 
         
     def read(self):
         try:
             with open(self.config_file, 'r') as cf:
-                self._config_dict = json.load(cf)
+                self._config = json.load(cf)
+            for data in DATA:
+                if self._config['data'] == data.__name__:
+                    self._config['data'] = data
+                    break
         except:
+            self._config = self._default.copy()
             print('Error while loading config. Using default values.')
     
     def write(self):    
-        with open(self.config_file, 'w') as f:
-            json.dump(self._config_dict, f)
+        # TODO: serialize class instead of storing name
+        config_copy = self._config.copy()
+        config_copy['data'] = self._config['data'].__name__
         
+        with open(self.config_file, 'w') as f:
+            json.dump(config_copy, f)
+    
+    # access stored config entries like fields        
+    def __getattr__(self, name):
+        if name in self.__dict__:
+            return self.__dict__[name]
+        if name in self._config:
+            return self._config[name]
+        raise AttributeError
+    
+    def __setattr__(self, name, value):     
+        if name in self.__dict__:
+            self.__dict__[name] = value   
+        else:
+            self._config[name] = value
         

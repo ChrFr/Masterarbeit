@@ -11,7 +11,7 @@
    </rect>
   </property>
   <property name="windowTitle">
-   <string>Dialog</string>
+   <string>Settings</string>
   </property>
   <layout class="QGridLayout" name="gridLayout">
    <item row="2" column="0">
@@ -22,10 +22,10 @@
     </widget>
    </item>
    <item row="3" column="0">
-    <widget class="QLineEdit" name="lineEdit"/>
+    <widget class="QLineEdit" name="source_edit"/>
    </item>
    <item row="3" column="1">
-    <widget class="QPushButton" name="pushButton">
+    <widget class="QPushButton" name="source_browse_button">
      <property name="enabled">
       <bool>false</bool>
      </property>
@@ -48,10 +48,10 @@
     </widget>
    </item>
    <item row="1" column="0" colspan="3">
-    <widget class="QComboBox" name="comboBox"/>
+    <widget class="QComboBox" name="data_combo"/>
    </item>
    <item row="5" column="0" colspan="3">
-    <widget class="QDialogButtonBox" name="buttonBox">
+    <widget class="QDialogButtonBox" name="button_box">
      <property name="locale">
       <locale language="English" country="UnitedStates"/>
      </property>
@@ -81,7 +81,7 @@
  <resources/>
  <connections>
   <connection>
-   <sender>buttonBox</sender>
+   <sender>button_box</sender>
    <signal>accepted()</signal>
    <receiver>SettingsDialog</receiver>
    <slot>accept()</slot>
@@ -97,7 +97,7 @@
    </hints>
   </connection>
   <connection>
-   <sender>buttonBox</sender>
+   <sender>button_box</sender>
    <signal>rejected()</signal>
    <receiver>SettingsDialog</receiver>
    <slot>reject()</slot>

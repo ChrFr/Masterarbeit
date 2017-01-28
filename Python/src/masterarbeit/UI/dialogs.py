@@ -14,18 +14,25 @@ from masterarbeit.UI.settings_ui import Ui_SettingsDialog
 from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV
 from masterarbeit.model.preprocessor.preprocessor_opencv import Binarize
 from masterarbeit.model.preprocessor.common import mask, crop, read_image
-from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER, FEATURES)
-from masterarbeit.model.backend.hdf5_data import HDF5Pandas
+from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER, FEATURES, 
+                                 HDF5_FILTER, DATA, Config)
 
-def browse_file(title='Select File', filters=[ALL_FILES_FILTER], multiple=False, parent=None):
-    if multiple:
+config = Config()
+
+def browse_file(title='Select File', filters=[ALL_FILES_FILTER], 
+                multiple=False, save=False, parent=None):
+    if save:
+        browse_func = Qt.QFileDialog.getSaveFileName
+    elif multiple:
         browse_func = Qt.QFileDialog.getOpenFileNames
     else:
         browse_func = Qt.QFileDialog.getOpenFileName
     filename, filter = browse_func(
             parent, title,
             filter=';;'.join(filters),
-            initialFilter=filters[0])
+            initialFilter=filters[0],
+            options=Qt.QFileDialog.DontConfirmOverwrite,
+    )
     return filename
 
 def browse_folder(title='Select Folder', parent=None):
@@ -40,9 +47,43 @@ def seconds_to_hms(seconds):
 
 class SettingsDialog(QDialog, Ui_SettingsDialog):    
     def __init__(self, parent=None):
-        super(SettingsDialog, self).__init__(parent=parent)  
+        super(SettingsDialog, self).__init__(parent=parent) 
         self.parent = parent  
         self.setupUi(self)
+        for data in DATA:
+            self.data_combo.addItem(data.__name__, data)
+        data_index = self.data_combo.findText(config.data.__name__)
+        self.data_combo.setCurrentIndex(data_index)
+        
+        # TODO: sql source without browsing      
+        self.source_browse_button.setEnabled(True)
+        self.source_edit.setReadOnly(True)
+        self.source_edit.setText(config.source)
+        def set_source():
+            source = browse_file(title='Select Source File',
+                                save=True, filters=[HDF5_FILTER],
+                                parent=self)
+            if len(source) > 0:
+                if not os.path.exists(source):
+                    open(source, 'a').close()
+                self.source_edit.setText(source)
+        self.source_browse_button.pressed.connect(set_source)
+        self.button_box.accepted.connect(self.check_config)
+        self.button_box.rejected.connect(self.reject)  
+        
+    def check_config(self):
+        source = self.source_edit.text()
+        if len(source) == 0:
+            return        
+        data = self.data_combo.currentData()
+        #new_config = config._config.copy()
+        #new_config['source'] = source
+        #new_config['data'] =  data
+        #shared_items = set(new_config.items()) & set(config.items())
+        #if (shared_items)
+        config.source = source
+        config.data = data
+        self.accept()
 
 
 class ProgressDialog(QDialog, Ui_ProgressDialog):
@@ -244,7 +285,7 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
         QDialog.__init__(self, parent=parent)
         self.setupUi(self)
         self.setWindowTitle('Extract Features')
-        self.data = HDF5Pandas()
+        self.data = config.data()
         self.setup()
         # actually not a queue, but a dict. 
         self.file_queue = OrderedDict()  
