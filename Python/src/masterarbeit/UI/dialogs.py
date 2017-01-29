@@ -284,14 +284,14 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
     def __init__(self, parent=None):          
         QDialog.__init__(self, parent=parent)
         self.setupUi(self)
-        self.setWindowTitle('Extract Features')
+        self.setWindowTitle('Extract Features to {}'.format(config.source))
         self.data = config.data()
         self.setup()
         # actually not a queue, but a dict. 
         self.file_queue = OrderedDict()  
         
     def setup(self):
-        self.data.open('batch_test.h5')  
+        self.data.open(config.source)  
         
         # drag and drop images into image queue, 
         # will be handled by self.eventFilter

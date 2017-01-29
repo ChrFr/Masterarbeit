@@ -47,7 +47,7 @@ class Ui_SettingsDialog(object):
 
     def retranslateUi(self, SettingsDialog):
         _translate = QtCore.QCoreApplication.translate
-        SettingsDialog.setWindowTitle(_translate("SettingsDialog", "Dialog"))
+        SettingsDialog.setWindowTitle(_translate("SettingsDialog", "Settings"))
         self.label_2.setText(_translate("SettingsDialog", "Source"))
         self.source_browse_button.setText(_translate("SettingsDialog", "..."))
         self.label.setText(_translate("SettingsDialog", "Datastore"))

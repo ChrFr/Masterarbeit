@@ -1,5 +1,6 @@
 import pytest
 import numpy as np
+import os
 
 from masterarbeit.model.classifiers.mlp import MLP
 from masterarbeit.model.classifiers.svm import SVM
@@ -12,14 +13,16 @@ _n_categories = 3
 _n_feat_per_cat = 5
 _data = {HDF5Pandas: 'hdf5_test.h5'}
 
-@pytest.fixture(params=_data)
+@pytest.fixture(scope='module', params=_data)
 def data(request):    
     Data = request.param
     data = Data()
     source = _data[Data]
+    if os.path.exists(source):
+        os.remove(source)
     data.open(source)    
     yield data
-    data.close()
+    data.close()    
 
 # sets up all classifiers once, 
 # if passed to a test, the test will be run for all of them

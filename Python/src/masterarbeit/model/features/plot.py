@@ -4,7 +4,7 @@ sns.set(style="ticks", color_codes=True)
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
 from masterarbeit.model.features.hu_moments import HuMoments
 
-def plot(feature_frame):
+def plot(features):
     #species = feature_frame['species']
     #del feature_frame['species']
     #feature_frame = (feature_frame - feature_frame.mean()) / (feature_frame.max() - feature_frame.min())

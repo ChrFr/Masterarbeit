@@ -22,7 +22,8 @@ class EntriesTable(tables.IsDescription):
 class HDF5Pandas(Data):
     root = '/'
     feature_base_path = 'features'
-    feature_path = feature_base_path + '/{category}/{feature}'
+    category_path = feature_base_path + '/{category}'
+    feature_path = category_path + '/{feature}'
     model_base_path = 'models'
     model_path = model_base_path + '/{model}/{name}'
     model_config = 'config'
@@ -49,6 +50,13 @@ class HDF5Pandas(Data):
             store.close()
         return names
     
+    def get_feature_count(self, category, feature_type):
+        path = self.feature_path.format(category=category, feature=feature_type)
+        if path not in self.store:
+            return 0
+        df = self.store[path]
+        return len(df.index)        
+    
     def add_feature(self, category, feature): 
         self.add_features(category, [feature])   
                 
@@ -74,6 +82,18 @@ class HDF5Pandas(Data):
             df = pd.DataFrame([feature.values], columns=columns)
             df[self.date_column] = now
             self.store.append(table_path, df) 
+        self.commit()
+        
+    def delete_category(self, category):
+        #category_path = self.root + self.category_path.format(category=category)
+        #for path in self.store.keys():
+            #if path.startswith(category_path):
+                #del self.store[path]
+        ##path = self.feature_path.format(category=category)
+        store = tables.open_file(self.source, mode='a')
+        category_path = self.root + self.category_path.format(category=category)
+        store.remove_node(category_path, recursive=True)
+        store.close()        
             
     def commit(self):
         self.store.flush(fsync=True)
@@ -167,7 +187,7 @@ class HDF5Pandas(Data):
                 out_g = out_store.get_node(root, out_group)    
             except:
                 p, g = os.path.split(out_group)
-                out_g = out_store.create_group(root + g, 
+                out_g = out_store.create_group(root + p, g, 
                                                createparents=True)
         if not in_group.startswith(root):
             in_group = root + in_group

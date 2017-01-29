@@ -1,5 +1,6 @@
 import numpy as np
 import pytest
+import os
 from masterarbeit.model.features.hu_moments import HuMoments
 from masterarbeit.model.features.zernike_moments import ZernikeMoments
 from masterarbeit.model.features.leaf_veins import LeafVeins
@@ -9,11 +10,13 @@ _image_shape = (200, 200)
 _features = [ZernikeMoments, HuMoments]
 _data = {HDF5Pandas: 'hdf5_test.h5'}
 
-@pytest.fixture(params=_data)
+@pytest.fixture(scope='module', params=_data)
 def data(request):    
     Data = request.param
     data = Data()
     source = _data[Data]
+    if os.path.exists(source):
+        os.remove(source)
     data.open(source)    
     yield data
     data.close()
@@ -43,7 +46,7 @@ def test_extract_features(features, binaries, data):
 
 @pytest.mark.order2
 def test_save_features(features, data):
-    data.add_features(features)  
+    data.add_features(features)
 
 @pytest.mark.order3
 def test_read_features(data):
@@ -53,6 +56,12 @@ def test_read_features(data):
     categories = data.get_categories()
     # 2 different binaries defined as different categories
     assert len(categories) == 2
+    
+    for category in categories:
+        for Feature in _features:
+            count = data.get_feature_count(category, Feature.__name__)
+            # we extracted 1 feature per feature type and species
+            assert count == 1
     
     ## checks if both lists contain same items
     ## (not just item count, as name might suggest)

@@ -1,10 +1,14 @@
-from PyQt5 import Qt, QtCore, QtWidgets
+from PyQt5 import Qt, QtCore
+from PyQt5.QtWidgets import (QApplication, QMainWindow, QDialog, 
+                             QListWidgetItem, QCheckBox,
+                             QTableWidgetItem)
 import sys
 from UI.main_window_ui import Ui_MainWindow
-from PyQt5.QtWidgets import QApplication, QMainWindow
 from collections import OrderedDict
 import numpy as np
 import cv2
+import os
+from collections import OrderedDict
 
 from masterarbeit.config import Config
 from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
@@ -22,31 +26,36 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         QMainWindow.__init__(self)
         self.setupUi(self)
         self.source_pixels = None
-        
+        self.store = None
+                
         ### MENU ###
         
         self.actionCrop_Images.triggered.connect(
             lambda: CropDialog(parent=self).exec_())
-        self.actionExtract_Features.triggered.connect(
-            lambda: FeatureDialog(parent=self).exec_())
+        def extract():
+            FeatureDialog(parent=self).exec_()
+            self.update_species_table()
+        self.actionExtract_Features.triggered.connect(extract)
+        self.extract_feature_button.pressed.connect(extract)
         
         ### CONFIGURATION
         
         def configure():
             diag = SettingsDialog(parent=self)
             result = diag.exec_()
-            if result == QtWidgets.QDialog.Accepted:
+            if result == QDialog.Accepted:
                 config.write()
-                self.apply_config()
+                self.on_config_changed()
         self.actionSettings.triggered.connect(configure)           
-        self.actionExit.triggered.connect(Qt.qApp.quit)   
-        
-        self.apply_config()
+        self.actionExit.triggered.connect(Qt.qApp.quit)           
         
         ### MAIN TABS ###
         
         self.setup_preprocessing()     
         self.setup_training()
+                
+        # apply config first time
+        self.on_config_changed()
 
     def setup_preprocessing(self):
         
@@ -88,8 +97,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         for processor in PRE_PROCESSORS:
             self.preprocessor_combo.addItem(processor.label, processor)                   
 
-    def apply_config(self):
-        pass
+    def on_config_changed(self):
+        if self.store:
+            self.store.close()
+        self.store = config.data()
+        self.store.open(config.source)
+        store_txt = 'Store: {} <i>(change in File/Settings)</i>'.format(
+            os.path.split(config.source)[1])
+        self.store_label.setText(store_txt)
+        self.update_species_table()
 
     def load_source_image(self, filename):
         if not filename:
@@ -116,12 +132,93 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     return True
             return False        
         
-    def setup_training(self):
-        pass
+    def setup_training(self):       
+        
+        # available features
+        for feature in FEATURES:
+            item = QListWidgetItem(self.features_list)
+            checkbox = QCheckBox(feature.label)
+            checkbox.clicked.connect(self.color_species_table)
+            self.features_list.setItemWidget(item, checkbox) 
+            
+        def delete_features():
+            pass            
+        self.delete_features_button.pressed.connect(delete_features)
+        
+        def delete_species():
+            checked_species = self.get_checked_species()
+            if len(checked_species) == 0:
+                return
+            for species in checked_species:
+                self.store.delete_category(species)
+            self.update_species_table()
+        self.delete_species_button.pressed.connect(delete_species)
+            
+    def get_checked_features(self):
+        features = []
+        for index in range(self.features_list.count()):
+            checkbox = self.features_list.itemWidget(
+                self.features_list.item(index))
+            if checkbox.isChecked():
+                features.append(FEATURES[index])
+        return features
+    
+    def get_checked_species(self):
+        species = []
+        table = self.species_table                
+        for row in range(table.rowCount()):
+            species_item = table.item(row, 0)
+            if species_item.checkState() > 0:
+                species.append(species_item.text())
+        return species    
+            
+    def color_species_table(self):   
+        features = self.get_checked_features()              
+        table = self.species_table                
+        for row in range(table.rowCount()):
+            feat_item = table.item(row, 1)
+            species_item = table.item(row, 0)
+            av_features = feat_item.features            
+            if len(features) == 0:        
+                b_color = Qt.QColor(255, 255, 255)
+            # all checked features are available
+            elif set(features).issubset(av_features):
+                b_color = Qt.QColor(230, 255, 230)
+            # not all checked features are available
+            else:
+                b_color = Qt.QColor(255, 230, 230)
+            species_item.setBackground(b_color)
+            feat_item.setBackground(b_color) 
  
-    def update_feature_list(self):
-        pass
-
+    def update_species_table(self):        
+        self._species_features = []
+        table = self.species_table
+        # remove all rows
+        table.setRowCount(0)
+        stored_species = self.store.get_categories()
+        for row, species in enumerate(stored_species):
+            table.insertRow(row)
+            species_check = QTableWidgetItem(species)
+            species_check.setCheckState(False)
+            feat_txts = []
+            feats = []
+            feat_missing = False
+            for f in FEATURES:
+                feat_name = f.__name__
+                feat_count = self.store.get_feature_count(species, feat_name)
+                feat_txt = '{}: {}'.format(f.label, feat_count)
+                feat_txts.append(feat_txt)
+                if feat_count > 0:
+                    feats.append(f)
+            feat_item = QTableWidgetItem(' | '.join(feat_txts))
+            # there is no function to add extra data, so just appended
+            # available features at object (needed to do coloring without
+            # updating table again)
+            feat_item.features = feats
+            table.setItem(row , 0, species_check)              
+            table.setItem(row , 1, feat_item)
+        self.color_species_table()
+ 
     def preprocess(self):
         if self.source_pixels is None:
             return
@@ -131,17 +228,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         preprocessor = self.preprocessor_combo.itemData(index)()
         binary = preprocessor.process(self.source_pixels, steps_dict=steps)
         
-        #masked_image = mask(self.source_pixels, binary)
-        #cropped = crop(masked_image, border=5)
-        #steps['cropped and masked image'] = cropped        
-        
         for name, pixels in steps.items():
             self.preprocess_steps_combo.addItem(name, pixels)            
         self.preprocess_steps_combo.setCurrentIndex(
             self.preprocess_steps_combo.count() - 1)
-
-        #self.descriptor.describe(self.preprocessor.process_steps['binary'])
-        #self.preprocess_combo.setCurrentIndex(self.preprocess_combo.count())
 
     def reset_views(self):
         self.preprocess_steps_combo.clear()
