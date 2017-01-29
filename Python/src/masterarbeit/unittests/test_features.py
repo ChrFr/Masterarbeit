@@ -51,7 +51,7 @@ def test_save_features(features, data):
 @pytest.mark.order3
 def test_read_features(data):
     for Feature in _features:
-        data.read_features(Feature)  
+        data.get_features(Feature)
         
     categories = data.get_categories()
     # 2 different binaries defined as different categories

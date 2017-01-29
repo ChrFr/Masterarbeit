@@ -7,7 +7,7 @@
     <x>0</x>
     <y>0</y>
     <width>1057</width>
-    <height>646</height>
+    <height>663</height>
    </rect>
   </property>
   <property name="windowTitle">
@@ -217,7 +217,7 @@
              <x>0</x>
              <y>0</y>
              <width>1654</width>
-             <height>514</height>
+             <height>531</height>
             </rect>
            </property>
            <layout class="QGridLayout" name="gridLayout_11">
@@ -273,7 +273,7 @@
                  <x>0</x>
                  <y>0</y>
                  <width>498</width>
-                 <height>401</height>
+                 <height>418</height>
                 </rect>
                </property>
                <layout class="QGridLayout" name="gridLayout">
@@ -311,7 +311,7 @@
                  <x>0</x>
                  <y>0</y>
                  <width>498</width>
-                 <height>375</height>
+                 <height>392</height>
                 </rect>
                </property>
                <layout class="QGridLayout" name="gridLayout_12">
@@ -428,7 +428,7 @@
                  <x>0</x>
                  <y>0</y>
                  <width>498</width>
-                 <height>401</height>
+                 <height>418</height>
                 </rect>
                </property>
                <layout class="QGridLayout" name="gridLayout_3">
@@ -584,25 +584,18 @@
         <property name="bottomMargin">
          <number>15</number>
         </property>
-        <item row="6" column="1">
-         <spacer name="horizontalSpacer">
+        <item row="0" column="3" rowspan="2">
+         <spacer name="verticalSpacer_7">
           <property name="orientation">
-           <enum>Qt::Horizontal</enum>
+           <enum>Qt::Vertical</enum>
           </property>
           <property name="sizeHint" stdset="0">
            <size>
-            <width>40</width>
-            <height>20</height>
+            <width>20</width>
+            <height>40</height>
            </size>
           </property>
          </spacer>
-        </item>
-        <item row="6" column="0">
-         <widget class="QPushButton" name="extract_feature_button">
-          <property name="text">
-           <string>Extract and add Features</string>
-          </property>
-         </widget>
         </item>
         <item row="0" column="0">
          <widget class="QLabel" name="store_label">
@@ -611,7 +604,160 @@
           </property>
          </widget>
         </item>
-        <item row="3" column="5">
+        <item row="4" column="3" rowspan="2">
+         <spacer name="verticalSpacer_5">
+          <property name="orientation">
+           <enum>Qt::Vertical</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>40</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item row="1" column="0" rowspan="4" colspan="2">
+         <widget class="QGroupBox" name="feature_group_box">
+          <property name="minimumSize">
+           <size>
+            <width>500</width>
+            <height>0</height>
+           </size>
+          </property>
+          <property name="title">
+           <string>Features</string>
+          </property>
+          <layout class="QGridLayout" name="gridLayout_7">
+           <item row="1" column="3">
+            <widget class="QPushButton" name="delete_features_button">
+             <property name="text">
+              <string>Delete from store</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="0">
+            <widget class="QCheckBox" name="all_features_check">
+             <property name="text">
+              <string>select/deselect  all</string>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="0">
+            <widget class="QCheckBox" name="all_species_check">
+             <property name="text">
+              <string>select/deselect  all</string>
+             </property>
+            </widget>
+           </item>
+           <item row="6" column="3">
+            <widget class="QPushButton" name="delete_species_button">
+             <property name="text">
+              <string>Delete from store</string>
+             </property>
+            </widget>
+           </item>
+           <item row="1" column="1" colspan="2">
+            <spacer name="horizontalSpacer_10">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item row="5" column="0" colspan="4">
+            <widget class="QTableWidget" name="species_table">
+             <property name="tabKeyNavigation">
+              <bool>false</bool>
+             </property>
+             <property name="showDropIndicator" stdset="0">
+              <bool>false</bool>
+             </property>
+             <property name="selectionMode">
+              <enum>QAbstractItemView::NoSelection</enum>
+             </property>
+             <property name="columnCount">
+              <number>2</number>
+             </property>
+             <attribute name="horizontalHeaderStretchLastSection">
+              <bool>true</bool>
+             </attribute>
+             <column>
+              <property name="text">
+               <string>available species</string>
+              </property>
+             </column>
+             <column>
+              <property name="text">
+               <string>stored features</string>
+              </property>
+             </column>
+            </widget>
+           </item>
+           <item row="0" column="0" colspan="4">
+            <widget class="QListWidget" name="features_list"/>
+           </item>
+           <item row="6" column="1" colspan="2">
+            <spacer name="horizontalSpacer_13">
+             <property name="orientation">
+              <enum>Qt::Horizontal</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>40</width>
+               <height>20</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item row="3" column="1">
+            <spacer name="verticalSpacer_3">
+             <property name="orientation">
+              <enum>Qt::Vertical</enum>
+             </property>
+             <property name="sizeType">
+              <enum>QSizePolicy::Fixed</enum>
+             </property>
+             <property name="sizeHint" stdset="0">
+              <size>
+               <width>20</width>
+               <height>10</height>
+              </size>
+             </property>
+            </spacer>
+           </item>
+           <item row="2" column="0">
+            <widget class="QPushButton" name="extract_feature_button">
+             <property name="text">
+              <string>Extract and add Features</string>
+             </property>
+            </widget>
+           </item>
+          </layout>
+         </widget>
+        </item>
+        <item row="0" column="2" rowspan="6">
+         <spacer name="horizontalSpacer_11">
+          <property name="orientation">
+           <enum>Qt::Horizontal</enum>
+          </property>
+          <property name="sizeType">
+           <enum>QSizePolicy::Fixed</enum>
+          </property>
+          <property name="sizeHint" stdset="0">
+           <size>
+            <width>20</width>
+            <height>20</height>
+           </size>
+          </property>
+         </spacer>
+        </item>
+        <item row="3" column="3">
          <widget class="QGroupBox" name="groupBox_3">
           <property name="title">
            <string>Train feature for selected species</string>
@@ -650,16 +796,16 @@
           </layout>
          </widget>
         </item>
-        <item row="2" column="5">
+        <item row="2" column="3">
          <widget class="QGroupBox" name="groupBox_2">
           <property name="title">
            <string>Plot feature for selected species</string>
           </property>
           <layout class="QGridLayout" name="gridLayout_8">
            <item row="0" column="0">
-            <widget class="QPushButton" name="pushButton_2">
+            <widget class="QPushButton" name="pairplot_button">
              <property name="text">
-              <string>Plot ????</string>
+              <string>Pairplot</string>
              </property>
             </widget>
            </item>
@@ -679,168 +825,7 @@
           </layout>
          </widget>
         </item>
-        <item row="2" column="0" rowspan="4" colspan="2">
-         <widget class="QGroupBox" name="feature_group_box">
-          <property name="minimumSize">
-           <size>
-            <width>400</width>
-            <height>0</height>
-           </size>
-          </property>
-          <property name="title">
-           <string>Features</string>
-          </property>
-          <layout class="QGridLayout" name="gridLayout_7">
-           <item row="2" column="3">
-            <widget class="QPushButton" name="delete_features_button">
-             <property name="text">
-              <string>Delete from store</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="0">
-            <widget class="QCheckBox" name="checkBox_2">
-             <property name="text">
-              <string>select/deselect  all</string>
-             </property>
-            </widget>
-           </item>
-           <item row="6" column="0">
-            <widget class="QCheckBox" name="checkBox">
-             <property name="text">
-              <string>select/deselect  all</string>
-             </property>
-            </widget>
-           </item>
-           <item row="6" column="3">
-            <widget class="QPushButton" name="delete_species_button">
-             <property name="text">
-              <string>Delete from store</string>
-             </property>
-            </widget>
-           </item>
-           <item row="2" column="1" colspan="2">
-            <spacer name="horizontalSpacer_10">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>40</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item row="5" column="0" colspan="4">
-            <widget class="QTableWidget" name="species_table">
-             <property name="tabKeyNavigation">
-              <bool>false</bool>
-             </property>
-             <property name="showDropIndicator" stdset="0">
-              <bool>false</bool>
-             </property>
-             <property name="selectionMode">
-              <enum>QAbstractItemView::NoSelection</enum>
-             </property>
-             <property name="columnCount">
-              <number>2</number>
-             </property>
-             <attribute name="horizontalHeaderStretchLastSection">
-              <bool>true</bool>
-             </attribute>
-             <column>
-              <property name="text">
-               <string>species</string>
-              </property>
-             </column>
-             <column>
-              <property name="text">
-               <string>stored features</string>
-              </property>
-             </column>
-            </widget>
-           </item>
-           <item row="1" column="0" colspan="4">
-            <widget class="QListWidget" name="features_list"/>
-           </item>
-           <item row="6" column="1" colspan="2">
-            <spacer name="horizontalSpacer_13">
-             <property name="orientation">
-              <enum>Qt::Horizontal</enum>
-             </property>
-             <property name="sizeHint" stdset="0">
-              <size>
-               <width>40</width>
-               <height>20</height>
-              </size>
-             </property>
-            </spacer>
-           </item>
-           <item row="3" column="0" colspan="2">
-            <widget class="QLabel" name="species_label">
-             <property name="text">
-              <string>Available species</string>
-             </property>
-            </widget>
-           </item>
-           <item row="0" column="0" colspan="3">
-            <widget class="QLabel" name="label_2">
-             <property name="text">
-              <string>Features to train</string>
-             </property>
-            </widget>
-           </item>
-          </layout>
-         </widget>
-        </item>
-        <item row="4" column="5" rowspan="2">
-         <widget class="QGroupBox" name="groupBox_4">
-          <property name="title">
-           <string>GroupBox</string>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="2" rowspan="5">
-         <spacer name="horizontalSpacer_12">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeType">
-           <enum>QSizePolicy::Fixed</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>20</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-        <item row="1" column="3" rowspan="9">
-         <widget class="Line" name="line">
-          <property name="orientation">
-           <enum>Qt::Vertical</enum>
-          </property>
-         </widget>
-        </item>
-        <item row="2" column="4" rowspan="5">
-         <spacer name="horizontalSpacer_11">
-          <property name="orientation">
-           <enum>Qt::Horizontal</enum>
-          </property>
-          <property name="sizeType">
-           <enum>QSizePolicy::Fixed</enum>
-          </property>
-          <property name="sizeHint" stdset="0">
-           <size>
-            <width>20</width>
-            <height>20</height>
-           </size>
-          </property>
-         </spacer>
-        </item>
-        <item row="3" column="6">
+        <item row="2" column="4">
          <spacer name="horizontalSpacer_9">
           <property name="orientation">
            <enum>Qt::Horizontal</enum>

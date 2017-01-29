@@ -281,14 +281,15 @@ class CropDialog(QDialog, Ui_CropDialog):
         
 class FeatureDialog(QDialog, Ui_FeatureDialog):
     
-    def __init__(self, parent=None):          
+    def __init__(self, preselected=[], parent=None):          
         QDialog.__init__(self, parent=parent)
         self.setupUi(self)
         self.setWindowTitle('Extract Features to {}'.format(config.source))
+        self.preselected = preselected
         self.data = config.data()
-        self.setup()
         # actually not a queue, but a dict. 
-        self.file_queue = OrderedDict()  
+        self.file_queue = OrderedDict() 
+        self.setup() 
         
     def setup(self):
         self.data.open(config.source)  
@@ -310,8 +311,8 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
         for feature in FEATURES:
             item = QListWidgetItem(self.features_list)
             checkbox = QCheckBox(feature.label)
-            checkbox.setTristate(False)
-            checkbox.setChecked(True)
+            if feature in self.preselected:
+                checkbox.setChecked(True)
             self.features_list.setItemWidget(item, checkbox)             
         
         self.start_button.pressed.connect(self.start)

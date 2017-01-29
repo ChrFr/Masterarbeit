@@ -85,32 +85,47 @@ class HDF5Pandas(Data):
         self.commit()
         
     def delete_category(self, category):
-        #category_path = self.root + self.category_path.format(category=category)
-        #for path in self.store.keys():
-            #if path.startswith(category_path):
-                #del self.store[path]
-        ##path = self.feature_path.format(category=category)
+        # when pandas is used for deletion of keys, parent groups are kept
+        # so pytables is used for cleaner deletion here
         store = tables.open_file(self.source, mode='a')
         category_path = self.root + self.category_path.format(category=category)
         store.remove_node(category_path, recursive=True)
-        store.close()        
-            
+        store.close()              
+        
+    def delete_feature_type(self, feature_type):
+        for path in self.store.keys():
+            if path.endswith('/' + feature_type.__name__):
+                del self.store[path]
+        
     def commit(self):
         self.store.flush(fsync=True)
             
-    def read_features(self, cls, category=None):        
+    def _get_feature_frame(self, cls, categories=None):        
         av_category = self.get_categories()
-        features = pd.DataFrame([], columns=cls.columns + ['category'])
+        feature_frame = pd.DataFrame([], columns=cls.columns + ['category'])
         for s in av_category:
-            if category is not None and s not in category:
+            if categories is not None and s not in categories:
                 continue
             table_path = self.feature_path.format(
                 category=s, feature=cls.__name__)   
             df = self.store.get(table_path)
             df['category'] = s
-            features = features.append(df)
-        if self.date_column in features:    
-            del features[self.date_column]        
+            feature_frame = feature_frame.append(df)
+        if self.date_column in feature_frame:    
+            del feature_frame[self.date_column]        
+        return feature_frame
+    
+    def get_features(self, cls, categories=None):
+        feature_frame = self._get_feature_frame(cls, categories=categories)
+        features = []
+        for row in feature_frame.iterrows():
+            r = row[1]
+            category = r['category']
+            del r['category']
+            values = np.array([v for v in r])
+            feature = cls(category)  
+            feature.values = values
+            features.append(feature)
         return features
     
     def save_classifier(self, classifier):

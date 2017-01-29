@@ -1,7 +1,7 @@
 from PyQt5 import Qt, QtCore
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QDialog, 
                              QListWidgetItem, QCheckBox,
-                             QTableWidgetItem)
+                             QTableWidgetItem, QMessageBox)
 import sys
 from UI.main_window_ui import Ui_MainWindow
 from collections import OrderedDict
@@ -16,6 +16,7 @@ from masterarbeit.config import PRE_PROCESSORS
 from masterarbeit.config import FEATURES
 from masterarbeit.model.preprocessor.common import mask, crop, read_image
 from masterarbeit.UI.imageview import ImageViewer
+from masterarbeit.model.features.plot import pairplot
 from masterarbeit.UI.dialogs import (CropDialog, FeatureDialog, SettingsDialog,
                                   browse_file)
 
@@ -32,11 +33,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         self.actionCrop_Images.triggered.connect(
             lambda: CropDialog(parent=self).exec_())
-        def extract():
-            FeatureDialog(parent=self).exec_()
+        def extract(features=[]):
+            FeatureDialog(preselected=features, parent=self).exec_()
             self.update_species_table()
-        self.actionExtract_Features.triggered.connect(extract)
-        self.extract_feature_button.pressed.connect(extract)
+        self.actionExtract_Features.triggered.connect(lambda : extract())
+        self.extract_feature_button.pressed.connect(lambda: extract(
+            self.get_checked_features()))
         
         ### CONFIGURATION
         
@@ -142,7 +144,9 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.features_list.setItemWidget(item, checkbox) 
             
         def delete_features():
-            pass            
+            for feature in self.get_checked_features():
+                self.store.delete_feature_type(feature)
+            self.update_species_table()
         self.delete_features_button.pressed.connect(delete_features)
         
         def delete_species():
@@ -153,6 +157,58 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 self.store.delete_category(species)
             self.update_species_table()
         self.delete_species_button.pressed.connect(delete_species)
+        
+        self.pairplot_button.pressed.connect(
+            lambda: self.plot(self.get_checked_features(),
+                              self.get_checked_species(),
+                              pairplot)
+        )
+        
+        def mass_select_features(state):            
+            for index in range(self.features_list.count()):
+                checkbox = self.features_list.itemWidget(
+                    self.features_list.item(index))
+                checkbox.setCheckState(state)
+            self.color_species_table()
+        self.all_features_check.stateChanged.connect(mass_select_features)
+        
+        def mass_select_species(state):
+            for row in range(self.species_table.rowCount()):
+                species_item = self.species_table.item(row, 0)
+                species_item.setCheckState(state)
+        self.all_species_check.stateChanged.connect(mass_select_species)
+        
+    def plot(self, feature_types, species, plot_func):
+        if len(feature_types) == 0 or len(species) == 0:
+            return
+        if len(feature_types) > 1:
+            msg = QMessageBox(parent=self)
+            msg.setWindowTitle('Warning')
+            msg.setIcon(QMessageBox.Warning)
+            msg.setText('You may only plot one feature type at a time.') 
+            msg.setInformativeText('Plot {} now?'.format(
+                feature_types[0].label)) 
+            msg.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+            retval = msg.exec_()
+            if retval == QMessageBox.Cancel:
+                return   
+            
+        feature_type = feature_types[0]
+        max_dim = None
+        if len(feature_type.columns) > 7:            
+            msg = QMessageBox(parent=self)
+            msg.setWindowTitle('Warning')
+            msg.setIcon(QMessageBox.Warning)
+            msg.setText('The selected feature has a very high dimension!')    
+            msg.setInformativeText(
+                'Should the plot be split into plots with smaller dimensions?') 
+            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            retval = msg.exec_()
+            if retval == QMessageBox.Yes:
+                max_dim = 6   
+                
+        features = self.store.get_features(feature_type, categories=species)  
+        plot_func(features, max_dim=max_dim)
             
     def get_checked_features(self):
         features = []

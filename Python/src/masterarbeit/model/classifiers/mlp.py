@@ -5,6 +5,7 @@ from sklearn.preprocessing import LabelEncoder
 import numpy as np
 
 from masterarbeit.model.classifiers.classifier import Classifier
+from masterarbeit.model.backend.common import features_to_dataframe
 
 class MLP(Classifier):   
     label = 'Multilayer Perceptron'
