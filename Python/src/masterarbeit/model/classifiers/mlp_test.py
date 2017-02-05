@@ -10,8 +10,9 @@ from sklearn.pipeline import Pipeline
 import seaborn as sns
 import copy
 import numpy as np
-from masterarbeit.model.features.plot import plot
+#from masterarbeit.model.features.plot import plot
 from keras.models import load_model
+from masterarbeit.model.features.common import features_to_dataframe
 
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
 from masterarbeit.model.features.hu_moments import HuMoments
@@ -28,6 +29,7 @@ class MLP():
         np.random.seed(seed)
         # load dataset
         #dataframe = pandas.read_csv("iris.csv", header=None)
+        dataframe = features_to_dataframe(dataframe)
         dataset = dataframe.values
         length = dataset.shape[1] - 1
         X = dataset[:,0:length].astype(float)
@@ -52,20 +54,20 @@ class MLP():
         
         KerasClassifier.get_params = get_params_fix    
         
-        #kfold = KFold(n_splits=10, shuffle=True, random_state=seed)
-        #results = cross_val_score(estimator, X, dummy_y, cv=kfold)
-        #print("Baseline: %.2f%% (%.2f%%)" % (results.mean()*100, results.std()*100))    
+        kfold = KFold(n_splits=10, shuffle=True, random_state=seed)
+        results = cross_val_score(estimator, X, dummy_y, cv=kfold)
+        print("Baseline: %.2f%% (%.2f%%)" % (results.mean()*100, results.std()*100))    
         
-        X_train, X_test, Y_train, Y_test = train_test_split(X, dummy_y, test_size=0.10, random_state=np.random.randint(0, 100000))
-        estimator.fit(X_train, Y_train)
-        predictions = estimator.predict(X_test)       
+        #X_train, X_test, Y_train, Y_test = train_test_split(X, dummy_y, test_size=0.10, random_state=np.random.randint(0, 100000))
+        #estimator.fit(X_train, Y_train)
+        #predictions = estimator.predict(X_test)       
         
-        print(encoder.inverse_transform(predictions))    
-        trained = uniques[Y_test.argmax(1)]
-        print(encoder.inverse_transform(trained)) 
-        a= (predictions==trained)
-        print('{}/{} recognized correctly'.format(a.sum(), len(a)))
-        print('done')
+        #print(encoder.inverse_transform(predictions))    
+        #trained = uniques[Y_test.argmax(1)]
+        #print(encoder.inverse_transform(trained)) 
+        #a= (predictions==trained)
+        #print('{}/{} recognized correctly'.format(a.sum(), len(a)))
+        #print('done')
     
 def get_params_fix(classifier, deep=False):
     res = copy.deepcopy(classifier.sk_params)
@@ -76,8 +78,8 @@ def get_params_fix(classifier, deep=False):
 if __name__ == '__main__':
     
     h5 = HDF5Pandas()
-    h5.open('../../batch_test.h5')     
-    features = h5.read_feature(ZernikeMoments, ['Klarapfel', 'Platane', 'Sommerlinde'])    
+    h5.open('../../hdf5_test.h5')     
+    features = h5.get_features(ZernikeMoments, ['Klarapfel', 'Suesskirsche', 'roter Boskop'])    
     h5.close() 
     a=list(np.arange(1,10))
     a.append('species')

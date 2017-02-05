@@ -1,21 +1,24 @@
 # -*- coding: utf-8 -*-
 from PyQt5.QtWidgets import (QDialog, QInputDialog, QListWidgetItem, QCheckBox,
                              QComboBox, QDialogButtonBox, QPushButton,
-                             QGridLayout, QSpacerItem, QSizePolicy, QLabel)
+                             QGridLayout, QSpacerItem, QSizePolicy, QLabel,
+                             QVBoxLayout)
 from PyQt5 import Qt, QtCore, QtGui
 import time, datetime
-import os, re
+import os, re, sys
 from collections import OrderedDict
+import numpy as np
 
 from masterarbeit.UI.crop_images_ui import Ui_Dialog as Ui_CropDialog
-from masterarbeit.UI.extract_features_ui import Ui_FeatureDialog
+from masterarbeit.UI.batch_features_ui import Ui_FeatureDialog
 from masterarbeit.UI.progress_ui import Ui_ProgressDialog
 from masterarbeit.UI.settings_ui import Ui_SettingsDialog
-from masterarbeit.model.preprocessor.preprocessor_skimage import BinarizeHSV
-from masterarbeit.model.preprocessor.preprocessor_opencv import Binarize
-from masterarbeit.model.preprocessor.common import mask, crop, read_image
+from masterarbeit.model.segmentation.segmentation_skimage import BinarizeHSV
+from masterarbeit.model.segmentation.segmentation_opencv import Binarize
+from masterarbeit.model.segmentation.common import (mask, crop, 
+                                                    read_image, write_image)
 from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER, FEATURES, 
-                                 HDF5_FILTER, DATA, Config)
+                                 HDF5_FILTER, DATA, Config, SEGMENTATION)
 
 config = Config()
 
@@ -173,8 +176,38 @@ class ProgressThread(QtCore.QThread):
 
     def stop(self):
         self.stop_requested = True
-
-
+        
+class FunctionProgressDialog(ProgressDialog):
+    '''
+    generic progress dialog executing the given function and tracking the 
+    stdout of the function (no progress indication though)
+    '''
+    def __init__(self, function, parent=None):
+        class WrappingThread(ProgressThread):            
+            def __init__ (self, function):
+                super(WrappingThread, self).__init__()
+                self.function = function                             
+            def run(self):
+                # redirect stdout to status signal
+                emitter = self.status   
+                class StdoutEmitter():
+                    def write(self, message):
+                        emitter.emit(message, None)
+                    def flush(self):
+                        pass
+                sys.stdout = StdoutEmitter()
+                self.function()
+                self.status.emit('', 100)
+        progress_thread = WrappingThread(function)
+        super(FunctionProgressDialog, self).__init__(progress_thread, 
+                                                     parent=parent)
+                
+    def _set_finished(self):
+        super(FunctionProgressDialog, self)._set_finished()
+        # reset stdout
+        sys.stdout = sys.__stdout__
+        
+        
 class CropDialog(QDialog, Ui_CropDialog):
     def __init__(self, parent=None):          
         QDialog.__init__(self, parent=parent)
@@ -202,7 +235,10 @@ class CropDialog(QDialog, Ui_CropDialog):
             folder = browse_folder('Select Output Folder', parent=self)
             if folder:
                 self.output_folder_edit.setText(folder)                
-        self.output_folder_browse_button.pressed.connect(set_output_folder)    
+        self.output_folder_browse_button.pressed.connect(set_output_folder)  
+        
+        for processor in SEGMENTATION:
+            self.segmentation_combo.addItem(processor.label, processor)         
         
         self.start_button.pressed.connect(self.start)
         self.close_button.pressed.connect(self.close)
@@ -211,10 +247,10 @@ class CropDialog(QDialog, Ui_CropDialog):
         
         class CropThread(ProgressThread):
             
-            def __init__ (self, in_out, suffix=None):
+            def __init__ (self, in_out, segmentation, suffix=None):
                 super(CropThread, self).__init__()
                 self.in_out = in_out
-                self.processor = BinarizeHSV()
+                self.segmentation = segmentation()
                 
             def run(self):
                 self.stop_requested = False
@@ -226,19 +262,19 @@ class CropDialog(QDialog, Ui_CropDialog):
                     if self.stop_requested:
                         break
                     
-                    image = self.processor.read(input_fp)
+                    image = read_image(input_fp)
                     if not os.path.exists(input_fp):
                         text = '<font color="red"><i>{f}</i> skipped, does not exist</font>'.format(f=input_fp)
                     elif re.search('[ü,ä,ö,ß,Ü,Ö,Ä]', input_fp):
                         text = '<font color="red"><i>{f}</i> skipped, Umlaute not supported in OpenCV</font>'.format(f=input_fp)
                     else:
-                        binary = self.processor.process(image)
+                        binary = self.segmentation.process(image)
                         masked_image = mask(image, binary)
                         cropped = crop(masked_image, border=5)       
                         out_path = os.path.split(output_fp)[0]
                         if not os.path.exists(out_path):
                             os.makedirs(out_path)
-                        success = self.processor.write(cropped, output_fp)                        
+                        success = write_image(cropped, output_fp)                        
                         if success:
                             text = '<i>{f}</i> cropped and written to <i>{o}</i>'.format(
                                 f=input_fp, o=output_fp)
@@ -247,9 +283,6 @@ class CropDialog(QDialog, Ui_CropDialog):
                     progress += step
                     self.status.emit(text, progress)
                     
-            def process_file(input_file, output_file):
-                pass
-        
         input_files = []
         output_files = []
         output_folder = self.output_folder_edit.text()  
@@ -276,10 +309,14 @@ class CropDialog(QDialog, Ui_CropDialog):
             output_files.append(output_fp)
         in_out = zip(input_files, output_files)
         
-        diag = ProgressDialog(CropThread(in_out, suffix), parent=self)
+        index = self.segmentation_combo.currentIndex()
+        segmentation = self.segmentation_combo.itemData(index)
+        
+        diag = ProgressDialog(CropThread(in_out, segmentation, suffix=suffix), 
+                              parent=self)
         diag.exec_()
         
-class FeatureDialog(QDialog, Ui_FeatureDialog):
+class BatchFeatureDialog(QDialog, Ui_FeatureDialog):
     
     def __init__(self, preselected=[], parent=None):          
         QDialog.__init__(self, parent=parent)
@@ -287,8 +324,6 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
         self.setWindowTitle('Extract Features to {}'.format(config.source))
         self.preselected = preselected
         self.data = config.data()
-        # actually not a queue, but a dict. 
-        self.file_queue = OrderedDict() 
         self.setup() 
         
     def setup(self):
@@ -319,21 +354,7 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
         self.close_button.pressed.connect(self.close)
         
     def enqueue_images(self, images):        
-        if len(images) > 0:     
-            av_species = self.data.get_categories()
-            species, result = SelectSpeciesDialog.get_species(av_species, 
-                                                              parent=self)
-            if not result:
-                return
-            if species not in self.file_queue:
-                self.file_queue[species]= images
-            else:
-                self.file_queue[species] += images    
-        self.image_queue_text.clear()
-        for species, images in self.file_queue.items():
-            self.image_queue_text.insertHtml('<b>{}</b><br>'.format(species))
-            for f in images:
-                self.image_queue_text.insertHtml('<i>{}</i><br>'.format(f))         
+        pass
         
     # called on events connected via installFilterEvent
     def eventFilter(self, object, event):
@@ -354,7 +375,88 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
                     return True
             return False                      
         
-    def start(self):                    
+    def start(self):         
+        pass
+        
+    def close(self):       
+        self.data.close()      
+        super(BatchFeatureDialog, self).close()
+        
+class BuildDictionaryDialog(BatchFeatureDialog):
+    def __init__(self, preselected=[], parent=None):
+        super(BuildDictionaryDialog, self).__init__(preselected, parent)
+        # actually not a queue, but a dict. 
+        self.files = []
+        
+    def enqueue_images(self, images):        
+        self.files = images       
+        for file in self.files:
+            self.image_queue_text.insertHtml('<i>{}</i><br>'.format(file))   
+        
+    def start(self):
+        self.processor = Binarize()
+        feat_types = []
+        for index in range(self.features_list.count()):
+            checkbox = self.features_list.itemWidget(
+                self.features_list.item(index))
+            if checkbox.isChecked():
+                feat_types.append(FEATURES[index])
+        store = config.data()
+        store.open(config.source)
+        for feat_type in feat_types:
+            raw_features = None
+            dictionary = feat_type.dictionary_type()
+            for input_file in self.files:
+                #if self.stop_requested:
+                    #break      
+                image = read_image(input_file)
+                binary = self.processor.process(image)  
+                # category doesn't matter here
+                feat = feat_type('')            
+                feat.describe(binary)
+                if raw_features is None:
+                    raw_features = feat._raw
+                else:
+                    raw_features = np.concatenate((raw_features, feat._raw), 
+                                                  axis=0)
+            dictionary.build(raw_features)
+            store.save_dictionary(dictionary, feat_type)
+            
+        
+class ExtractFeatureDialog(BatchFeatureDialog):
+    
+    def __init__(self, preselected=[], parent=None):
+        super(ExtractFeatureDialog, self).__init__(preselected, parent)
+        # actually not a queue, but a dict. 
+        self.file_queue = OrderedDict() 
+        self.replace_check = QCheckBox('replace existing feature/species ' +
+                                       'combinations in store')
+        self.replace_check.setChecked(True)
+        self.crop_check = QCheckBox('segment and crop the images, before ' +
+                                    'extracting the features (not needed ' +
+                                    'if already cropped)') 
+        
+        self.gridLayout.addWidget(self.crop_check, 9, 0, 1, 3)
+        self.gridLayout.addWidget(self.replace_check, 8, 0, 1, 3)
+        
+    def enqueue_images(self, images):        
+        if len(images) > 0:     
+            av_species = self.data.get_categories()
+            species, result = SelectSpeciesDialog.get_species(av_species, 
+                                                              parent=self)
+            if not result:
+                return
+            if species not in self.file_queue:
+                self.file_queue[species]= images
+            else:
+                self.file_queue[species] += images    
+        self.image_queue_text.clear()
+        for species, images in self.file_queue.items():
+            self.image_queue_text.insertHtml('<b>{}</b><br>'.format(species))
+            for f in images:
+                self.image_queue_text.insertHtml('<i>{}</i><br>'.format(f))         
+    
+    def start(self):
         features = []
         for index in range(self.features_list.count()):
             checkbox = self.features_list.itemWidget(self.features_list.item(index))
@@ -367,12 +469,8 @@ class FeatureDialog(QDialog, Ui_FeatureDialog):
                                             self.data, features, 
                                             replace=replace),
                               parent=self)
-        diag.exec_() 
-        
-    def close(self):       
-        self.data.close()      
-        super(FeatureDialog, self).close()
-        
+        diag.exec_()     
+
 class SelectSpeciesDialog(QDialog):
     def __init__(self, species, parent=None):
         super(SelectSpeciesDialog, self).__init__(parent=parent)
@@ -461,7 +559,7 @@ class FeatureThread(ProgressThread):
                     binary = self.processor.process(image)  
                     for feat_type in self.feature_types:
                         feat = feat_type(species)
-                        feat.extract(binary)
+                        feat.describe(binary)
                         features.append(feat)
                         text = '{feature} extracted from <i>{file}</i>'.format(
                             feature=feat.label, file=input_file)
@@ -475,3 +573,50 @@ class FeatureThread(ProgressThread):
         else:
             text += ' appended to store'
         self.status.emit(text, 100)   
+
+class WaitDialog(QDialog):
+    finished = QtCore.pyqtSignal()
+    
+    def __init__(self, function, parent=None):
+        super(WaitDialog, self).__init__(parent) 
+        self.setWindowTitle("...")
+        self.thread = self._create_thread(function)
+        self.thread.finished.connect(self._close)
+        self.done = False
+        vbox_layout = QVBoxLayout(self)
+        label = QLabel('Please wait...')
+        label.setAlignment(QtCore.Qt.AlignCenter)
+        vbox_layout.addWidget(label)
+        self.setModal(True)
+        self.setMinimumSize(200, 75)
+        
+    def _create_thread(self, function):        
+        class WaitThread(QtCore.QThread):   
+            finished = QtCore.pyqtSignal()            
+            def __init__ (self):
+                super(WaitThread, self).__init__()  
+                self.result = None
+            def run(self):
+                self.result = function()  
+                self.finished.emit()
+        return WaitThread()
+    
+    def run(self):   
+        self.show()
+        self.thread.start()
+        
+    def _close(self):
+        self.done = True
+        self.finished.emit()
+        self.close()
+        
+    @property    
+    def result(self):
+        return self.thread.result
+        
+    # disable closing of wait window
+    def closeEvent(self, evnt):
+        if self.done:
+            super(WaitDialog, self).closeEvent(evnt)
+        else:
+            evnt.ignore() 

@@ -6,7 +6,7 @@ from masterarbeit.model.backend.hdf5_data import HDF5Pandas
 from masterarbeit.model.features.hu_moments import HuMoments
 from masterarbeit.model.features.common import features_to_dataframe
 
-def pairplot(features, max_dim=None):
+def pairplot(features, max_dim=None, do_show=False):
     sns.set(style="ticks", color_codes=True)      
     feature_frame = features_to_dataframe(features)        
     #species = feature_frame['species']
@@ -24,5 +24,11 @@ def pairplot(features, max_dim=None):
         sliced_columns = np.append(np.array(feature_frame.columns[slc]), 
                                    ['category'])
         sliced_frame = feature_frame[sliced_columns]
-        g = sns.pairplot(sliced_frame, hue='category')
-        sns.plt.show()
+        grid = sns.pairplot(sliced_frame, hue='category')
+        #sns.plt.rcParams['interactive'] = True
+        
+        if do_show:
+            sns.plt.show()
+        else:
+            sns.plt.draw()
+            

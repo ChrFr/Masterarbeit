@@ -1,20 +1,27 @@
 import json
 import os
 
-from masterarbeit.model.preprocessor import preprocessor_opencv as pocv
-from masterarbeit.model.preprocessor import preprocessor_skimage as psk
+from masterarbeit.model.segmentation import segmentation_opencv as pocv
+from masterarbeit.model.segmentation import segmentation_skimage as psk
 from masterarbeit.model.features.hu_moments import HuMoments
 from masterarbeit.model.features.zernike_moments import ZernikeMoments
+from masterarbeit.model.features.borders import Borders
+from masterarbeit.model.features.idsc import IDSC
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
+from masterarbeit.model.classifiers.mlp import MLP
+from masterarbeit.model.classifiers.svm import SVM
 
 IMAGE_FILTER = 'Images (*.png, *.jpg)'
 ALL_FILES_FILTER = 'All Files(*.*)'
 HDF5_FILTER = 'HDF5 (*.h5)'
 
-PRE_PROCESSORS = (pocv.Binarize, psk.BinarizeHSV, psk.SegmentGabor, 
-                  pocv.SegmentVeinsGabor)
-FEATURES = (HuMoments, ZernikeMoments)
+SEGMENTATION = (pocv.Binarize, psk.BinarizeHSV, psk.SegmentGabor, 
+                  pocv.SegmentVeinsGabor, pocv.KMeansBinarize, pocv.KMeansHSVBinarize)
+FEATURES = (HuMoments, ZernikeMoments, Borders, IDSC)
+CLASSIFIERS = (MLP, SVM)
 DATA = [HDF5Pandas]
+
+file_path = os.path.split(__file__)[0]
 
 
 class Singleton(type):
@@ -26,12 +33,13 @@ class Singleton(type):
     
     
 class Config(metaclass=Singleton):  
+    # config file is stored in same path as this file
+    config_file = os.path.join(file_path, 'config.json')
     
-    config_file = 'config.json'
-    
+    # config is built out of this dict, if not exists yet
     _default = {
         'data': HDF5Pandas,
-        'source': os.path.join(os.getcwd(), 'default_store.h5')
+        'source': os.path.join(file_path, 'default_store.h5')
         }
 
     _config = {}
@@ -62,7 +70,8 @@ class Config(metaclass=Singleton):
         config_copy['data'] = self._config['data'].__name__
         
         with open(self.config_file, 'w') as f:
-            json.dump(config_copy, f)
+            # pretty print to file
+            json.dump(config_copy, f, indent=4, separators=(',', ': '))
     
     # access stored config entries like fields        
     def __getattr__(self, name):

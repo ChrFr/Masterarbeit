@@ -6,7 +6,7 @@ class HuMoments(Feature):
     label = 'Hu-Moments'
     columns = ['0', '1', '2', '3', '4', '5', '6']
     
-    def extract(self, binary):
+    def describe(self, binary, steps={}):
         #moments = cv2.HuMoments(cv2.moments(binary))
         # in case range is [0,255]
         clipped = binary.clip(max=1)

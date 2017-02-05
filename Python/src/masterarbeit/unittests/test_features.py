@@ -42,7 +42,7 @@ def features(request, binaries):
 def test_extract_features(features, binaries, data):
     z = zip(features, binaries)
     for feature, binary in z:
-        feature.extract(binary)
+        feature.describe(binary)
 
 @pytest.mark.order2
 def test_save_features(features, data):

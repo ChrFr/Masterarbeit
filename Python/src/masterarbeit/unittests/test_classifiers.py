@@ -37,6 +37,7 @@ def classifier(request):
 def features(request):
     # mocked feature, no extraction tested here
     class TestFeature(Feature):
+        columns = np.arange(_feature_dim) 
         def extract():
             pass
     features = []    
@@ -50,6 +51,7 @@ def features(request):
 
 @pytest.mark.order1
 def test_training(classifier, features):
+    classifier.validate(features)
     classifier.train(features)
 
 @pytest.mark.order2

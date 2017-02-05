@@ -22,9 +22,11 @@ class EntriesTable(tables.IsDescription):
 class HDF5Pandas(Data):
     root = '/'
     feature_base_path = 'features'
+    model_base_path = 'models'
+    dictionary_base_path = 'dictionaries'
     category_path = feature_base_path + '/{category}'
     feature_path = category_path + '/{feature}'
-    model_base_path = 'models'
+    dictionary_path = dictionary_base_path + '/{feature}'
     model_path = model_base_path + '/{model}/{name}'
     model_config = 'config'
     date_column = 'datetime'
@@ -36,6 +38,10 @@ class HDF5Pandas(Data):
     def open(self, source):
         self.source = source
         self.store = pd.get_store(source)
+        
+    @property
+    def is_open(self):
+        return self.store.is_open
         
     def get_categories(self):   
         # use pytables for better hierarchical representation than pandas
@@ -177,6 +183,21 @@ class HDF5Pandas(Data):
                 in_store.close()
                 out_store.close()                
                 shutil.rmtree(tmp_dir)     
+                
+    def save_dictionary(self, dictionary, feature_type):
+        table_path = self.dictionary_path.format(feature=feature_type.__name__) 
+        self.store[table_path] = pd.DataFrame(dictionary.atoms)
+        self.commit()
+        
+    def get_dictionary(self, feature_type):
+        table_path = self.dictionary_path.format(feature=feature_type.__name__) 
+        if table_path not in self.store:
+            return None
+        df = self.store.get(table_path)
+        atoms = df.as_matrix()
+        dictionary = feature_type.dictionary_type()
+        dictionary.load(atoms)
+        return dictionary
     
     def _copy_group(self, in_store, in_group, out_store, out_group, keep_group=True): 
         '''
