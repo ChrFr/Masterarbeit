@@ -126,7 +126,10 @@ class HDF5Pandas(Data):
                 continue
             table_path = self.feature_path.format(
                 category=category, feature=cls.__name__)   
-            df = self.store.get(table_path)
+            try:
+                df = self.store.get(table_path)
+            except:
+                continue 
             df['category'] = category
             if feature_frame is None:
                 feature_frame = df
@@ -183,8 +186,7 @@ class HDF5Pandas(Data):
         classifier_config['date'] = now
         classifier_config['feature types'] = feat_types_ser
         classifier_config['input dim'] = classifier.input_dim
-        classifier_config['trained categories'] = list(
-            classifier.trained_categories)
+        classifier_config['trained categories'] = classifier.trained_categories
         out_store.set_node_attr(self.root + table_path, 
                                 self.classifier_config_attr, 
                                 json.dumps(classifier_config))

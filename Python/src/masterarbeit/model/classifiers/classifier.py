@@ -21,8 +21,8 @@ class Classifier(metaclass=ABCMeta):
         pass
           
     def train(self, features):
-        categories, values, feat_types = zip(*[(f.category, f.values, type(f)) 
-                                               for f in features]) 
+        categories, values, feat_types = zip(*[(f.category, f.values,
+                                                type(f)) for f in features]) 
         feat_types = np.array(feat_types)
         u, idx = np.unique(feat_types.astype(str), 
                            return_index=True)
@@ -35,14 +35,14 @@ class Classifier(metaclass=ABCMeta):
         # with SAME order of the unique categories (important for 
         # reversing class to category in prediction)
         unique_cat, classes, count = np.unique(categories, 
-                                        return_inverse=True, 
-                                        return_counts=True)
+                                               return_inverse=True, 
+                                               return_counts=True)
         self.trained_categories = unique_cat       
-        
         unique_cat_count = zip(*(unique_cat, count))
         cat_str = ['{}({})'.format(u[0], u[1]) for u in unique_cat_count]
         self.trained_categories = ', '.join(cat_str)
         n_classes = len(unique_cat)
+        values = np.array(values)
         print('Start training for {} categories '.format(n_classes) +
               'with an input dimension of {}'.format(values.shape[1]))
         self._train(values, classes, n_classes)

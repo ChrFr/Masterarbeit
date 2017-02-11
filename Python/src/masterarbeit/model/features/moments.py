@@ -26,7 +26,6 @@ class ZernikeMoments(Feature):
         shape = list(binary.shape) + [3]
         kernel = np.ones((40,40),np.uint8)
         closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)
-        steps['closed'] = closed
     
         im, contours, hierarchy = cv2.findContours(closed, cv2.RETR_TREE,
                                     cv2.CHAIN_APPROX_SIMPLE)
@@ -38,6 +37,7 @@ class ZernikeMoments(Feature):
         center, radius = cv2.minEnclosingCircle(contours[0])
         moments = zernike_moments(binary, radius, cm=center)
         if steps is not None:
+            steps['closed'] = closed
             cont_img = np.zeros((binary.shape[0], binary.shape[1], 3))
             cv2.drawContours(cont_img, contours, 0, (0, 255, 0), 3)
             steps['contour'] = cont_img

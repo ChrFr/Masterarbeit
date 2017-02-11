@@ -72,16 +72,17 @@ class IDSC(UnsupervisedFeature):
                 # by binary pixels, where row is y and column is x)
                 for point in line_points:
                     if binary[int(point[1]), int(point[0])] == 0:
-                        break    
-                
-                # if all points on line in shape -> calculate distance 
-                # and store in matrix (mirrored)
-                dist = distance(p1, p2)
-                # ignore distances beyond the defined maximum
-                if dist > self.max_distance:
-                    break
-                dist_matrix[j + i, i] = dist
-                dist_matrix[i, j + i] = dist
+                        break 
+                # no break -> all points in between are inside the shape
+                else:
+                    # if all points on line in shape -> calculate distance 
+                    # and store in matrix (mirrored)
+                    dist = distance(p1, p2)
+                    # ignore distances beyond the defined maximum
+                    if dist > self.max_distance:
+                        break
+                    dist_matrix[j + i, i] = dist
+                    dist_matrix[i, j + i] = dist
         return dist_matrix
         
     def _build_shape_context(self, distance_matrix, contour_points, 
@@ -100,8 +101,8 @@ class IDSC(UnsupervisedFeature):
     
             # calc. contour tangent from previous to next point
             # to determine angles to all other contour points
-            (prev_x, prev_y) = contour_points[i-1]
-            (next_x, next_y) = contour_points[(i+1) % len(contour_points)]
+            (prev_x, prev_y) = contour_points[i - 1]
+            (next_x, next_y) = contour_points[(i + 1) % len(contour_points)]
             contourTangent = np.arctan2(next_y - prev_y, 
                                         next_x - prev_x)
     
@@ -128,7 +129,7 @@ class IDSC(UnsupervisedFeature):
                 angle_idx = int(min(angle / angle_step, 
                                     self.n_angle_buckets - 1))    
                 # increase bin in bucket
-                hist[dist_idx, angle_idx] += 1
+                hist[angle_idx, dist_idx] += 1
     
             histogram.append(hist)
     
