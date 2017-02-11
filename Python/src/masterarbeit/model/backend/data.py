@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+import importlib
 
 class Data(ABC):
     
@@ -20,4 +21,17 @@ class Data(ABC):
     
     @abstractmethod
     def close(self):
-        pass    
+        pass        
+    
+def class_to_string(cls):
+    mod = cls.__module__
+    cls_name = cls.__name__
+    return '{mod}.{cls}'.format(mod=mod, cls=cls_name)
+
+def load_class(class_string):
+    split = class_string.split('.')
+    module_str = '.'.join(split[:-1])
+    module = importlib.import_module(module_str)
+    cls_str = split[-1]    
+    cls = getattr(module, cls_str)
+    return cls

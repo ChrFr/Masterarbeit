@@ -1,8 +1,10 @@
 import numpy as np
 import os
 import cv2
+from scipy import ndimage as ndi
 
 from masterarbeit.model.segmentation.segmentation import Segmentation
+from skimage.morphology import remove_small_objects   
 
 class OpenCVSegmentation(Segmentation):
     
@@ -78,9 +80,14 @@ class SegmentVeinsGabor(OpenCVSegmentation):
         return gabor    
     
 class KMeansBinarize(Segmentation):
-    label = 'clustered k-means Binarization (OpenCV)'    
+    label = 'clustered k-means Binarization (OpenCV)'     
+    process_width = 2000
     def process(self, image, steps=None):
-        reshaped_img = image.copy().reshape((-1,3)).astype(np.float32)
+        res_factor = self.process_width / image.shape[1]
+        new_shape = (int(image.shape[0] * res_factor), int(image.shape[1] * res_factor))
+        resized = cv2.resize(image, new_shape)
+        
+        reshaped_img = resized.reshape((-1,3)).astype(np.float32)
         criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_MAX_ITER, 1, 10)
         # for binarization we need the color space clustered into 2 labels
         n_clusters = 2
@@ -89,11 +96,11 @@ class KMeansBinarize(Segmentation):
         
         if steps is not None:   
             res = center[label.flatten()]
-            res2 = res.reshape((image.shape))
+            res2 = res.reshape((resized.shape))
             steps['clustered colors'] = res2               
                         
-        width = image.shape[0]
-        height = image.shape[1]
+        width = resized.shape[0]
+        height = resized.shape[1]
         labels_reshaped = label.reshape(
             (width, height)).astype(np.float32)      
         
@@ -112,10 +119,16 @@ class KMeansBinarize(Segmentation):
         labels_reshaped = cv2.GaussianBlur(labels_reshaped, (0, 0), 2)        
         retval, binary = cv2.threshold(labels_reshaped, .5, 255.0, 
                                        cv2.THRESH_BINARY)
-        kernel = np.ones((20, 20),np.uint8)
-        closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)     
+        #kernel = np.ones((20, 20),np.uint8)
+        #closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)    
+        closed = (ndi.binary_fill_holes(
+            binary, structure=np.ones((10,10)))).astype(np.uint8) 
         
-        return closed.astype(np.uint8)
+        rem = remove_small_objects(closed.astype(bool), min_size=5000)
+        rem = rem.astype(np.uint8)
+        o_size_binary = cv2.resize(rem, (image.shape[1], image.shape[0]))
+        
+        return o_size_binary.astype(np.uint8)
     
 class KMeansHSVBinarize(KMeansBinarize):
     label = 'clustered k-means Binarization in HSV space (OpenCV)'    

@@ -3,12 +3,13 @@ import os
 
 from masterarbeit.model.segmentation import segmentation_opencv as pocv
 from masterarbeit.model.segmentation import segmentation_skimage as psk
-from masterarbeit.model.features.hu_moments import HuMoments
-from masterarbeit.model.features.zernike_moments import ZernikeMoments
+from masterarbeit.model.features.moments import ZernikeMoments, HuMoments
 from masterarbeit.model.features.borders import Borders
-from masterarbeit.model.features.idsc import IDSC
+from masterarbeit.model.features.idsc import (IDSCKMeans, IDSCDict, 
+                                              IDSCGaussiansKMeans,
+                                              IDSCGaussiansDict)
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
-from masterarbeit.model.classifiers.mlp import MLP
+from masterarbeit.model.classifiers.mlp import ComplexMLP, SimpleMLP
 from masterarbeit.model.classifiers.svm import SVM
 
 IMAGE_FILTER = 'Images (*.png, *.jpg)'
@@ -17,8 +18,9 @@ HDF5_FILTER = 'HDF5 (*.h5)'
 
 SEGMENTATION = (pocv.Binarize, psk.BinarizeHSV, psk.SegmentGabor, 
                   pocv.SegmentVeinsGabor, pocv.KMeansBinarize, pocv.KMeansHSVBinarize)
-FEATURES = (HuMoments, ZernikeMoments, Borders, IDSC)
-CLASSIFIERS = (MLP, SVM)
+FEATURES = (HuMoments, ZernikeMoments, Borders, IDSCKMeans, IDSCDict, 
+            IDSCGaussiansKMeans, IDSCGaussiansDict)
+CLASSIFIERS = (ComplexMLP, SimpleMLP)
 DATA = [HDF5Pandas]
 
 file_path = os.path.split(__file__)[0]
@@ -35,6 +37,9 @@ class Singleton(type):
 class Config(metaclass=Singleton):  
     # config file is stored in same path as this file
     config_file = os.path.join(file_path, 'config.json')
+    
+    # the main segmentation used, when not asked for specific one
+    default_segmentation = pocv.KMeansHSVBinarize
     
     # config is built out of this dict, if not exists yet
     _default = {

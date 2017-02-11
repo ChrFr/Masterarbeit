@@ -1,19 +1,20 @@
 from PyQt5 import Qt, QtCore
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QDialog, 
                              QListWidgetItem, QCheckBox,
-                             QTableWidgetItem, QMessageBox)
+                             QTableWidgetItem, QMessageBox,
+                             QInputDialog)
 import sys
 from collections import OrderedDict
 import numpy as np
 import cv2
 import os
+import json
 from collections import OrderedDict
 
 from masterarbeit.UI.main_window_ui import Ui_MainWindow
 from masterarbeit.config import Config
 from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
 from masterarbeit.config import (SEGMENTATION, FEATURES, CLASSIFIERS)
-from masterarbeit.model.features.feature import MultiFeature
 from masterarbeit.model.segmentation.common import (mask, crop, read_image,
                                                     remove_thin_objects)
 from masterarbeit.UI.imageview import ImageViewer
@@ -22,7 +23,10 @@ from masterarbeit.UI.dialogs import (CropDialog, ExtractFeatureDialog,
                                      BuildDictionaryDialog,
                                      SettingsDialog,
                                      browse_file, WaitDialog, 
-                                     FunctionProgressDialog)
+                                     FunctionProgressDialog, error_message)
+
+from masterarbeit.model.segmentation.segmentation_opencv import KMeansHSVBinarize
+from masterarbeit.model.features.feature import UnsupervisedFeature
 
 config = Config()
 
@@ -33,6 +37,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.source_pixels = None
         self.preprocessed_pixels = None
         self.store = None
+        self.pred_classifier = None
         
         # apply config initially
         self.on_config_changed()
@@ -51,12 +56,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         self.actionCrop_Images.triggered.connect(
             lambda: CropDialog(parent=self).exec_())
-        def multi_extract(features=[]):
-            ExtractFeatureDialog(preselected=features, parent=self).exec_()
-            self.update_species_table()
-        self.actionExtract_Features.triggered.connect(lambda : multi_extract())
-        self.add_features_button.pressed.connect(lambda: multi_extract(
-            self.get_checked_features()))
+        self.actionExtract_Features.triggered.connect(
+            lambda: self.multi_extract())
         
         ### CONFIGURATION
         
@@ -72,7 +73,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ### MAIN TABS ###
         
         self.setup_seg_feat_tab()     
-        self.setup_training()                
+        self.setup_training_tab()       
+        self.setup_prediction_tab()
 
     def setup_seg_feat_tab(self):
         
@@ -110,8 +112,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             lambda index: on_image_selected(index, self.segmentation_view,
                                             self.segmentation_steps_combo))                   
         
-        for feature in FEATURES:
-            self.feature_combo.addItem(feature.label, feature)  
+        for feature_type in FEATURES:
+            label = feature_type.label
+            if issubclass(feature_type, UnsupervisedFeature):
+                label += ' ({})'.format(feature_type.codebook_type.__name__)
+            self.feature_combo.addItem(label, feature_type)  
         self.feature_steps_combo.currentIndexChanged.connect(
             lambda index: on_image_selected(index, self.feature_view,
                                             self.feature_steps_combo))            
@@ -135,24 +140,30 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.source_view.draw_pixels(self.source_pixels)    
         
     # called on events connected via installFilterEvent
-    def eventFilter(self, object, event):
-        if (object is self.source_image_scroll):
-            if (event.type() == QtCore.QEvent.DragEnter):
-                # dragged item has url (most likely path to file)
-                if event.mimeData().hasUrls():
+    def eventFilter(self, obj, event):
+        # dragged items have url (most likely path to file)
+        if event.type() == QtCore.QEvent.DragEnter:            
+            if (event.mimeData().hasUrls and
+                obj in [self.source_image_scroll, self.prediction_table]):
                     event.accept()   
                     return True
-                else:
-                    event.ignore()
-            if (event.type() == QtCore.QEvent.Drop):
-                # if dropped item has url -> extract filename 
-                if event.mimeData().hasUrls():  
-                    filename = event.mimeData().urls()[0].toLocalFile()
-                    self.load_source_image(filename)
-                    return True
-            return False        
+            else:
+                event.ignore()
+        elif event.type() == QtCore.QEvent.Drop:
+            if not event.mimeData().hasUrls():
+                event.ignore()                
+            elif obj is self.source_image_scroll:
+                # extract filename  
+                filename = event.mimeData().urls()[0].toLocalFile()
+                self.load_source_image(filename)
+                return True
+            elif obj is self.prediction_table:    
+                filenames = [url.toLocalFile() for url in 
+                             event.mimeData().urls()]
+                self.add_prediction_images(filenames)
+        return False        
         
-    def setup_training(self):     
+    def setup_training_tab(self):     
         self.update_feature_table()
         self.color_species_table()
         def delete_features():
@@ -193,26 +204,119 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.all_species_check.stateChanged.connect(mass_select_species)
         
         for classifier in CLASSIFIERS:
-            self.classifier_combo.addItem(classifier.label, classifier)
+            self.classifier_training_combo.addItem(classifier.label, classifier)
         self.train_button.pressed.connect(self.train)
+        
+        self.add_features_button.pressed.connect(lambda: self.multi_extract(
+            self.get_checked_features()))      
         
         def build_dict():
             BuildDictionaryDialog(preselected=self.get_checked_features(), 
                                   parent=self).exec_()
+            self.update_feature_table()
         self.build_dict_button.pressed.connect(build_dict)
+        
+    def setup_prediction_tab(self):
+        self.update_trained_classifiers()
+                
+        def change_classifier(idx):
+            if self.classifier_prediction_combo.currentIndex() < 0:
+                return
+            cls_type, name = self.classifier_prediction_combo.currentData()
+            self.pred_classifier = self.store.get_classifier(cls_type, name)            
+            status = json.dumps(self.pred_classifier.meta, indent=4)            
+            self.classifier_status.setText(status)            
+        self.classifier_prediction_combo.setCurrentIndex(-1)
+        self.classifier_prediction_combo.currentIndexChanged.connect(
+            change_classifier)
+        
+        self.prediction_table.setAcceptDrops(True)
+        self.prediction_table.installEventFilter(self)
+        
+        self.predict_button.pressed.connect(self.predict)
+        
+        self.clear_prediction_button.pressed.connect(
+            lambda: self.prediction_table.setRowCount(0))
+        
+        def remove_classifier():
+            cls_type, name = self.classifier_prediction_combo.currentData()
+            self.classifier_prediction_combo.setCurrentIndex(-1)
+            self.store.delete_classifier(cls_type, name)
+            self.update_trained_classifiers()
+        self.remove_classifier_button.pressed.connect(remove_classifier)
+        
+    def predict(self):          
+        if self.pred_classifier is None:
+            return
+        table = self.prediction_table
+        if table.rowCount() == 0:
+            return
+        files = []
+        for row in range(table.rowCount()):
+            files.append(table.item(row, 0).text())
+        segmentation = config.default_segmentation()
+        features = []
+        feats_used = self.pred_classifier.trained_features
+        codebook = self.store.get_codebook(feats_used[0])
+        for file in files:
+            image = read_image(file)
+            binary = segmentation.process(image)
+            for feat_type in feats_used:
+                feature = feat_type('')
+                feature.describe(binary)
+                if isinstance(feature, UnsupervisedFeature):
+                    feature.histogram(codebook)
+                features.append(feature)
+        predictions = self.pred_classifier.predict(features)
+        for row, pred in enumerate(predictions):
+            self.prediction_table.setItem(row , 1, QTableWidgetItem(pred))         
+        
+    def update_trained_classifiers(self):
+        self.classifier_prediction_combo.clear()
+        av_classifiers = self.store.get_classifiers()
+        for cls_name, names in av_classifiers.items():
+            cls_type = None
+            for c in CLASSIFIERS:
+                if c.__name__ == cls_name:
+                    cls_type = c
+                    break
+            for name in names:
+                label = '{} - {}'.format(cls_name, name)
+                self.classifier_prediction_combo.addItem(label, (cls_type, name))        
+        
+    def add_prediction_images(self, images):
+        row_count = self.prediction_table.rowCount()
+        for i, image in enumerate(images):
+            row = i + row_count
+            self.prediction_table.insertRow(row)
+            img_item = QTableWidgetItem(image)
+            self.prediction_table.setItem(row , 0, img_item) 
             
     def train(self):
-        cls = self.classifier_combo.currentData()
-        classifier = cls('test')    
         feat_types = self.get_checked_features()
         species = self.get_checked_species()
+        if len(species) == 0 or len(feat_types) == 0:
+            return
+        
+        name, ok = QInputDialog.getText(self, 'Classifier', 
+                                        'set name of classifier')
+        if not name or not ok:         
+            return
+        cls = self.classifier_training_combo.currentData()        
+        classifier = cls(name)    
         feat_type = feat_types[0]
+        if len(feat_types) == 0 or len(species) == 0:
+            return
         input_dim = len(feat_type.columns)
-        classifier.setup_model(input_dim)
         features = self.store.get_features(feat_type, categories=species)
         
-        FunctionProgressDialog(lambda: classifier.train(features), 
-                               parent=self).exec_()
+        def train_and_save():
+            print('training classifier...')
+            classifier.train(features)
+            print('classifier trained')
+            self.store.save_classifier(classifier)
+        FunctionProgressDialog(train_and_save, parent=self).exec_()
+        self.update_trained_classifiers()
         
     def plot_features(self, feature_types, species, plot_func):
         if len(feature_types) == 0 or len(species) == 0:
@@ -288,6 +392,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             feat_item.setBackground(b_color) 
             
     def update_feature_table(self):    
+        self.feature_table.setRowCount(0)
         # disconnect signal, else it would be called when adding a row
         try: 
             self.feature_table.cellChanged.disconnect() 
@@ -295,14 +400,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             pass        
         
         # available features
-        for row, feature in enumerate(FEATURES):
+        for row, feature_type in enumerate(FEATURES):
             self.feature_table.insertRow(row)
-            feat_item = QTableWidgetItem(feature.label)
+            feat_item = QTableWidgetItem(feature_type.label)
             feat_item.setCheckState(False)
             b_color = Qt.QColor(255, 255, 255) 
-            if issubclass(feature, MultiFeature):
-                dict_label = '{}'.format(feature.dictionary_type.__name__)
-                if self.store.get_dictionary(feature) is None:
+            if issubclass(feature_type, UnsupervisedFeature):
+                dict_label = '{}'.format(feature_type.codebook_type.__name__)
+                if self.store.get_codebook(feature_type) is None:
                     dict_label += ' not built yet'
                     b_color = Qt.QColor(255, 230, 230)
                 else:
@@ -313,8 +418,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                        
             dict_item = QTableWidgetItem(dict_label)
             dict_item.setBackground(b_color)
-            self.feature_table.setItem(row , 0, feat_item) 
-            self.feature_table.setItem(row , 1, dict_item) 
+            self.feature_table.setItem(row, 0, feat_item) 
+            self.feature_table.setItem(row, 1, dict_item) 
                 
         self.feature_table.resizeColumnsToContents()   
         self.feature_table.cellChanged.connect(self.color_species_table)
@@ -332,13 +437,16 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             feat_txts = []
             feats = []
             feat_missing = False
-            for f in FEATURES:
-                feat_name = f.__name__
+            for feature_type in FEATURES:
+                feat_name = feature_type.__name__
                 feat_count = self.store.get_feature_count(species, feat_name)
-                feat_txt = '{}: {}'.format(f.label, feat_count)
+                label = feature_type.label
+                if issubclass(feature_type, UnsupervisedFeature):
+                    label += ' ({})'.format(feature_type.codebook_type.__name__)
+                feat_txt = '{}: {}'.format(label, feat_count)
                 feat_txts.append(feat_txt)
                 if feat_count > 0:
-                    feats.append(f)
+                    feats.append(feature_type)
             feat_item = QTableWidgetItem(' | '.join(feat_txts))
             # there is no function to add extra data, so just appended
             # available features at object (needed to do coloring without
@@ -347,6 +455,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             table.setItem(row , 0, species_check)              
             table.setItem(row , 1, feat_item)
         self.color_species_table()
+        self.species_table.resizeColumnsToContents()   
  
     def segmentation(self):
         if self.source_pixels is None:
@@ -378,7 +487,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                       parent=self)
             
             diag.finished.connect(lambda: update_ui(diag.result))
-            diag.run()                     
+            diag.run()             
+            
+    def multi_extract(self, features=[]):
+        ExtractFeatureDialog(preselected=features, parent=self).exec_()
+        self.update_feature_table()
+        self.update_species_table()    
     
     def extract_feature(self):
         if self.preprocessed_pixels is None:
@@ -389,7 +503,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         feature = self.feature_combo.itemData(index)('-')        
         #diag = WaitDialog(lambda: feature.describe(self.preprocessed_pixels, 
                                                    #steps=steps),                           
-                                  #parent=self)
+                                  #parent=self)                                  
         
         def update_features():
             for name, pixels in steps.items():
@@ -415,13 +529,15 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             
             fig.autofmt_xdate()            
             plt.show()
-        #diag.finished.connect(update_features)
-        #diag.run()                
+                      
         
         feature.describe(self.preprocessed_pixels, steps=steps) 
-        if isinstance(feature, MultiFeature):
-            dictionary = self.store.get_dictionary(type(feature))
-            feature.build_histogram(dictionary)
+        if isinstance(feature, UnsupervisedFeature):
+            codebook = self.store.get_codebook(type(feature))
+            if codebook is None:
+                error_message('Codebook needed but not built yet!', parent=self)
+                return
+            feature.histogram(codebook)
         update_features()
 
     def reset_processed_views(self):
@@ -431,7 +547,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.feature_label.clear()
         self.preprocessed_pixels = None
         self.extracted_feature = None
-
+        
 def main():
     app = QApplication(sys.argv)
     window = MainWindow()        

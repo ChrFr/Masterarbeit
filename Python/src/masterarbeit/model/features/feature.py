@@ -2,9 +2,9 @@ import numpy as np
 from abc import ABCMeta
 from abc import abstractmethod
 
-class Feature():   
+class Feature(metaclass=ABCMeta):   
     label = 'None'    
-    columns = []    
+    columns = []      
     
     def __init__(self, category):
         self._v = None
@@ -17,7 +17,7 @@ class Feature():
     def values(self):
         if self._v is None:
             raise Exception('Feature has not been described yet!')
-        return self._v    
+        return self._v               
     
     @values.setter    
     def values(self, values):
@@ -33,33 +33,26 @@ class Feature():
     def describe(self, image, steps={}):
         pass
     
-class MultiFeature(Feature):
-    dictionary_type = None
+class UnsupervisedFeature(Feature):
+    n_levels = 1
+    codebook_type = None     
+    
+    @staticmethod
+    def new_codebook():
+        codebook = self.codebook_type(self.n_levels)
         
     def __init__(self, category):
-        super(MultiFeature, self).__init__(category)
-        self._raw = None
+        super(UnsupervisedFeature, self).__init__(category)
         
-    @property    
-    def values(self):
-        if self._raw is None:
-            raise Exception('Feature has not been described yet!')
-        if self._v is None:
-            raise Exception("Histogram wasn't built yet!")
-        return self._v       
-    
-    def build_histogram(self, dictionary):
-        if not isinstance(dictionary, self.dictionary_type):
-            raise Exception('Feature requires {} to build an histogram'.format(
-                self.dictionary_type.__name__                
-            ))
-        if len(dictionary) != len(self):
+    def histogram(self, codebook):
+        values = self.values
+        if not isinstance(codebook, self.codebook_type):
+            raise Exception('Feature requires {} to build an histogram'
+                            .format(self.codebook_type.__name__))
+        if len(codebook) != len(self):
             raise Exception('Length of atoms mismatch! ({}!={})i'.format(
-                len(dictionary), len(self)               
+                len(codebook), len(self)               
             ))        
-        self._v = self.get_atom_histogram(dictionary)        
-    
-    def get_atom_histogram(self, dictionary):        
-        feature_vector = self._raw.reshape(self._raw.shape[0], -1) 
-        histogram = dictionary.count_patterns(feature_vector)
-        return histogram
+        feature_vector = values.reshape(values.shape[0], -1) 
+        self._v = codebook.histogram(feature_vector) 
+                

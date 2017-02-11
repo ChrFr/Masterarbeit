@@ -2,10 +2,6 @@ import seaborn as sns
 import pandas as pd
 import numpy as np
 
-from masterarbeit.model.backend.hdf5_data import HDF5Pandas
-from masterarbeit.model.features.hu_moments import HuMoments
-from masterarbeit.model.features.common import features_to_dataframe
-
 def pairplot(features, max_dim=None, do_show=False):
     sns.set(style="ticks", color_codes=True)      
     feature_frame = features_to_dataframe(features)        

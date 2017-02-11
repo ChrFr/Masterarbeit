@@ -25,8 +25,6 @@ class ImageViewer():
         pixel_array : numpy array, array of pixels, colored: each pixel is described by an array with 3 values for rgb-values, else only one value per pixel
         """
         # expand binary and hsv to rgb color range
-        import cv2
-        cv2.imshow('', pixel_array)
         shape = pixel_array.shape
         if pixel_array.max() <= 1:
             pixel_array *= 255

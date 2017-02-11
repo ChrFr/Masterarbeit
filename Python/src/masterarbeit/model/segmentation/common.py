@@ -4,20 +4,25 @@ import cv2
 from skimage.morphology import erosion, dilation, remove_small_objects   
 from skimage.morphology import disk, square
 
-def remove_thin_objects(binary):   
+def remove_thin_objects(binary):  
+    process_width = 800
+    res_factor = process_width / binary.shape[1]
+    new_shape = (int(binary.shape[0] * res_factor), int(binary.shape[1] * res_factor))
+    resized = cv2.resize(binary, new_shape)
     for i in range(1):
-        eroded = erosion(binary, selem=disk(16))
+        eroded = erosion(resized, selem=disk(12))
     # dilate with much bigger structuring element ('blow it up'), 
     # because relevant details might also get lost in erosion 
     # (e.g. leaf tips)
     for i in range(1):
-        dilated = dilation(eroded, selem=disk(32))
+        dilated = dilation(eroded, selem=disk(20))
     # sometimes parts of the stem remain (esp. the thicker base) -> remove them
     rem = remove_small_objects(dilated.astype(bool), min_size=10000)
     rem = rem.astype(np.uint8)
     
-    # combine more detailed binary with 'blown up' binary
-    masked_binary = mask(binary, rem)           
+    # combine more detailed binary with 'blown up' binary   
+    rem_resized = cv2.resize(rem, (binary.shape[1], binary.shape[0]))
+    masked_binary = mask(binary, rem_resized)           
     return masked_binary    
     
 def mask(image, binary):

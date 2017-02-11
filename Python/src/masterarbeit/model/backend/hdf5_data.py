@@ -7,28 +7,33 @@ import os
 import tempfile
 import uuid
 import shutil
+import json
+from collections import OrderedDict
 from keras.engine.topology import Container as KerasModel
 from keras.models import load_model as keras_load_model
+import pickle
 
-from masterarbeit.model.backend.data import Data
+from masterarbeit.model.backend.data import (Data, class_to_string, 
+                                             load_class)
 
 DATETIME_FORMAT = "%H:%M:%S %d.%m.%y"
 
 class EntriesTable(tables.IsDescription):
     index = tables.UInt64Col(pos=1)
     date = tables.StringCol(32, pos=2)
-    table = tables.StringCol(32, pos=3)
+    table = tables.StringCol(32, pos=3)   
     
 class HDF5Pandas(Data):
     root = '/'
+    classifier_config_attr = 'classifier_config'
+    serialized_model_attr = 'classifier_serialized'
     feature_base_path = 'features'
     model_base_path = 'models'
     dictionary_base_path = 'dictionaries'
     category_path = feature_base_path + '/{category}'
     feature_path = category_path + '/{feature}'
-    dictionary_path = dictionary_base_path + '/{feature}'
+    codebook_path = dictionary_base_path + '/{feature}'
     model_path = model_base_path + '/{model}/{name}'
-    model_config = 'config'
     date_column = 'datetime'
     
     def __init__(self):
@@ -69,25 +74,30 @@ class HDF5Pandas(Data):
     def add_category(self, category):
         self.store.createGroup(self.category_root, category)
         
-    def add_features(self, features, replace=False):        
-        now = datetime.datetime.now().strftime(DATETIME_FORMAT)  
-        features.sort(key=lambda f: type(f).__name__, reverse=True)        
-        feat_type = type(None)
-        for feature in features:
-            category = feature.category    
+    def add_features(self, features, replace=False):
+        features = np.array(features)
+        categories = np.array([f.category for f in features])
+        unique_cat = np.unique(categories)
+        for category in unique_cat:
+            idx = categories == category
+            self._add_features(features[idx], category, replace=replace)        
+        
+    def _add_features(self, features, category, replace=False):        
+        now = datetime.datetime.now().strftime(DATETIME_FORMAT)    
+        feat_types = np.array([type(f).__name__ for f in features])  
+        unique_feat = np.unique(feat_types)
+        for feat_type in feat_types:  
             table_path = self.feature_path.format(
-                category=category, feature=type(feature).__name__)          
-            # type of feature changed: change paths
-            if not isinstance(feature, feat_type):   
-                feat_type = type(feature)
-                columns = feature.columns      
-                if replace and table_path in self.store:
-                    del(self.store[table_path])
-                                             
-            now = datetime.datetime.now().strftime(DATETIME_FORMAT)
-            df = pd.DataFrame([feature.values], columns=columns)
-            df[self.date_column] = now
-            self.store.append(table_path, df) 
+                category=category, feature=feat_type)  
+            if replace and self.root + table_path in self.store.keys():                
+                del(self.store[table_path])        
+            idx = feat_types == feat_type   
+            features_per_type = features[idx]
+            for feature in features_per_type:
+                columns = feature.columns  
+                df = pd.DataFrame([feature.values], columns=columns)
+                df[self.date_column] = now        
+                self.store.append(table_path, df) 
         self.commit()
         
     def delete_category(self, category):
@@ -102,21 +112,26 @@ class HDF5Pandas(Data):
         for path in self.store.keys():
             if path.endswith('/' + feature_type.__name__):
                 del self.store[path]
+        code_path = self.codebook_path.format(feature=feature_type.__name__)  
+        del self.store[code_path]
         
     def commit(self):
         self.store.flush(fsync=True)
             
     def _get_feature_frame(self, cls, categories=None):        
         av_category = self.get_categories()
-        feature_frame = pd.DataFrame([], columns=cls.columns + ['category'])
-        for s in av_category:
-            if categories is not None and s not in categories:
+        feature_frame = None
+        for category in av_category:
+            if categories is not None and category not in categories:
                 continue
             table_path = self.feature_path.format(
-                category=s, feature=cls.__name__)   
+                category=category, feature=cls.__name__)   
             df = self.store.get(table_path)
-            df['category'] = s
-            feature_frame = feature_frame.append(df)
+            df['category'] = category
+            if feature_frame is None:
+                feature_frame = df
+            else:            
+                feature_frame = feature_frame.append(df)
         if self.date_column in feature_frame:    
             del feature_frame[self.date_column]        
         return feature_frame
@@ -135,8 +150,12 @@ class HDF5Pandas(Data):
         return features
     
     def save_classifier(self, classifier):
-        group_name = self.model_path.format(model=type(classifier).__name__,
+        table_path = self.model_path.format(model=type(classifier).__name__,
                                             name=classifier.name)
+        #self.store[table_path] = pd.DataFrame(classifier.serialize())
+        #self.commit()
+        
+        out_store = tables.open_file(self.source, mode='a')   
         # keras provides method to save model, but only in single file
         # write file and copy it into the main source
         if isinstance(classifier.model, KerasModel):            
@@ -145,59 +164,122 @@ class HDF5Pandas(Data):
             tmp_file = os.path.join(tmp_dir, f_name)
             self._save_keras_model(classifier.model, tmp_file) 
             try:
-                in_store = tables.openFile(tmp_file, mode='a')
-                out_store = tables.open_file(self.source, mode='a')                
-                self._copy_group(in_store, '/', out_store, group_name)
+                in_store = tables.openFile(tmp_file, mode='a')             
+                self._copy_group(in_store, '/', out_store, table_path)
                 # keras saves model attributes to root
-                config = in_store.get_node_attr('/', 'model_config')
-                out_store.set_node_attr('/' + group_name, self.model_config, 
-                                        config)
+                for config_attr in ['model_config', 'training_config']:
+                    model_config = in_store.get_node_attr('/', config_attr)
+                    out_store.set_node_attr('/' + table_path, config_attr, 
+                                            model_config) 
             finally:             
                 in_store.close()
-                out_store.close()     
-                shutil.rmtree(tmp_dir)
-        else:
-            self._pickle_and_save_model(classifier.model, '')            
+                shutil.rmtree(tmp_dir)    
+        classifier_config = OrderedDict()  
+        classifier_config['type'] = type(classifier).__name__
+        
+        feat_types_ser = [class_to_string(ft) 
+                          for ft in classifier.trained_features]
+        now = datetime.datetime.now().strftime(DATETIME_FORMAT) 
+        classifier_config['date'] = now
+        classifier_config['feature types'] = feat_types_ser
+        classifier_config['input dim'] = classifier.input_dim
+        classifier_config['trained categories'] = list(
+            classifier.trained_categories)
+        out_store.set_node_attr(self.root + table_path, 
+                                self.classifier_config_attr, 
+                                json.dumps(classifier_config))
+        out_store.close()          
             
-    def load_classifier(self, name, cls):
-        classifier = cls(name)        
-        group_name = self.model_path.format(model=cls.__name__,
+    def get_classifiers(self):
+        classifiers = {}
+        # use pytables, because models were not saved as dataframes, 
+        # so pandas ignore them
+        store = tables.open_file(self.source, mode='a')
+        try:
+            for g in store.list_nodes(self.root + self.model_base_path):
+                classifier = g._v_name
+                classifiers[classifier] = []
+                for child in g:
+                    name = child._v_name
+                    classifiers[classifier].append(name)
+        except:
+            pass
+        finally:
+            store.close()
+        return classifiers
+            
+    def get_classifier(self, cls, name):
+        classifier = cls(name)
+        table_path = self.model_path.format(model=cls.__name__,
                                             name=name)
+        #if table_path not in self.store:
+            #return None
+        #df = self.store.get(table_path)
+        #serialized = df.as_matrix()
+        ## if array was stored, no need for 2nd dim
+        #if serialized.shape[1] == 1:
+            #serialized = serialized[:, 0]
+        #classifier.deserialize(serialized)
+        #return classifier
+    
+        status = OrderedDict()
         # keras provides method to load modelfrom single file
         # copy model-group into file to load it
+        in_store = tables.openFile(self.source, mode='a')
         if isinstance(classifier.model, KerasModel): 
             tmp_dir = tempfile.mkdtemp()
             f_name = '{}.h5'.format(uuid.uuid4())
             tmp_file = os.path.join(tmp_dir, f_name)
-            try:
-                in_store = tables.openFile(self.source, mode='a')
+            try:        
                 out_store = tables.open_file(tmp_file, mode='a')
-                self._copy_group(in_store, group_name, out_store, '/', 
+                self._copy_group(in_store, table_path, out_store, '/', 
                                  keep_group=False)
-                config = in_store.get_node_attr('/' + group_name, 
-                                                self.model_config)
-                out_store.set_node_attr('/',  'model_config', config)  
+                for config_attr in ['model_config', 'training_config']:
+                    config = in_store.get_node_attr('/' + table_path, 
+                                                    config_attr)
+                    out_store.set_node_attr('/',  config_attr, config)
+                    status[config_attr] = json.loads(config.astype(str))
                 model = self._load_keras_model(tmp_file)  
                 classifier.model = model
+            except:
+                print("couldn't load Keras model")
             finally:   
-                in_store.close()
                 out_store.close()                
-                shutil.rmtree(tmp_dir)     
+                shutil.rmtree(tmp_dir) 
+        classifier_config = in_store.get_node_attr(self.root + table_path, 
+                                                   self.classifier_config_attr)
+        cls_config = json.loads(classifier_config)
+        status['classifier'] = cls_config
+        feature_types = [load_class(ft) 
+                         for ft in cls_config['feature types']]
+        classifier.trained_features = feature_types
+        classifier.trained_categories = cls_config['trained categories']
+        status.move_to_end('classifier', last=False)
+        in_store.close()        
+        classifier.meta = status
+        return classifier        
+    
+    def delete_classifier(self, cls, name):
+        store = tables.open_file(self.source, mode='a')
+        cls_path = self.root + self.model_path.format(model=cls.__name__,
+                                                      name=name)
+        store.remove_node(cls_path, recursive=True)
+        store.close() 
                 
-    def save_dictionary(self, dictionary, feature_type):
-        table_path = self.dictionary_path.format(feature=feature_type.__name__) 
-        self.store[table_path] = pd.DataFrame(dictionary.atoms)
+    def save_codebook(self, codebook, feature_type):
+        table_path = self.codebook_path.format(feature=feature_type.__name__)         
+        self.store[table_path] = pd.DataFrame(codebook.serialize())
         self.commit()
         
-    def get_dictionary(self, feature_type):
-        table_path = self.dictionary_path.format(feature=feature_type.__name__) 
+    def get_codebook(self, feature_type):
+        table_path = self.codebook_path.format(feature=feature_type.__name__) 
         if table_path not in self.store:
             return None
         df = self.store.get(table_path)
-        atoms = df.as_matrix()
-        dictionary = feature_type.dictionary_type()
-        dictionary.load(atoms)
-        return dictionary
+        serialized = df.as_matrix()
+        codebook = feature_type.codebook_type()
+        codebook.deserialize(serialized)
+        return codebook
     
     def _copy_group(self, in_store, in_group, out_store, out_group, keep_group=True): 
         '''
@@ -239,9 +321,6 @@ class HDF5Pandas(Data):
     def _load_keras_model(self, filename):  
         model = keras_load_model(filename)
         return model
-    
-    def _pickle_and_save_model(self, model, filename):
-        pass
     
     def close(self):        
         self.store.close()
@@ -322,3 +401,16 @@ class HDF5Tables(Data):
         
     def close(self):        
         self.store.close()
+        
+def split_list(lst, field_name):
+    lst.sort(key=lambda element: geattr(element, field_name))
+    ret = []
+    field_val = None
+    segment = []
+    for element in lst:
+        if field_val != geattr(element, field_name):
+            if len(feat_cat_list) > 0:
+                self._add_features(feat_cat_list, category, replace=replace)
+            field_val = geattr(element, field_name)
+            segment = [] 
+        segment.append(element)     

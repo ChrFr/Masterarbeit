@@ -30,7 +30,6 @@ def data(request):
 def classifier(request):
     Classifier = request.param
     cl = Classifier('test')
-    cl.setup_model(_feature_dim)
     return cl
 
 @pytest.fixture(scope='module')

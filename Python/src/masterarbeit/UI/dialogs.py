@@ -17,10 +17,18 @@ from masterarbeit.model.segmentation.segmentation_skimage import BinarizeHSV
 from masterarbeit.model.segmentation.segmentation_opencv import Binarize
 from masterarbeit.model.segmentation.common import (mask, crop, 
                                                     read_image, write_image)
+from masterarbeit.model.features.feature import UnsupervisedFeature
 from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER, FEATURES, 
                                  HDF5_FILTER, DATA, Config, SEGMENTATION)
 
 config = Config()
+
+def error_message(text, parent=None):
+    msg = QMessageBox(parent=parent)
+    msg.setWindowTitle('Error')
+    msg.setIcon(QMessageBox.Warning)
+    msg.setText(text) 
+    msg.exec_().s
 
 def browse_file(title='Select File', filters=[ALL_FILES_FILTER], 
                 multiple=False, save=False, parent=None):
@@ -146,12 +154,14 @@ class ProgressDialog(QDialog, Ui_ProgressDialog):
     def kill(self):
         self.killed = True
         self.timer.stop()
+        self._show_status(
+            '<br>Trying to stop at next possible break point...<br>')
         self.thread.stop()
 
     def _show_status(self, text, progress=None):
         self.log_edit.insertHtml(str(text) + '<br>')
         self.log_edit.moveCursor(QtGui.QTextCursor.End)
-        if progress:
+        if progress and progress >= 0:
             self.progress_bar.setValue(progress)
 
     def _update_timer(self):
@@ -201,11 +211,14 @@ class FunctionProgressDialog(ProgressDialog):
         progress_thread = WrappingThread(function)
         super(FunctionProgressDialog, self).__init__(progress_thread, 
                                                      parent=parent)
+        # you can't stop the function
+        self.cancel_button.setEnabled(False)
                 
     def _set_finished(self):
         super(FunctionProgressDialog, self)._set_finished()
         # reset stdout
         sys.stdout = sys.__stdout__
+        self.cancel_button.setEnabled(True)
         
         
 class CropDialog(QDialog, Ui_CropDialog):
@@ -270,7 +283,7 @@ class CropDialog(QDialog, Ui_CropDialog):
                     else:
                         binary = self.segmentation.process(image)
                         masked_image = mask(image, binary)
-                        cropped = crop(masked_image, border=5)       
+                        cropped = crop(masked_image, border=50)       
                         out_path = os.path.split(output_fp)[0]
                         if not os.path.exists(out_path):
                             os.makedirs(out_path)
@@ -321,13 +334,12 @@ class BatchFeatureDialog(QDialog, Ui_FeatureDialog):
     def __init__(self, preselected=[], parent=None):          
         QDialog.__init__(self, parent=parent)
         self.setupUi(self)
-        self.setWindowTitle('Extract Features to {}'.format(config.source))
         self.preselected = preselected
-        self.data = config.data()
+        self.store = config.data()
         self.setup() 
         
     def setup(self):
-        self.data.open(config.source)  
+        self.store.open(config.source)  
         
         # drag and drop images into image queue, 
         # will be handled by self.eventFilter
@@ -343,18 +355,25 @@ class BatchFeatureDialog(QDialog, Ui_FeatureDialog):
         self.images_browse_button.pressed.connect(browse_images)
         
         # available features
-        for feature in FEATURES:
+        for feature_type in FEATURES:            
+            label = feature_type.label
+            if issubclass(feature_type, UnsupervisedFeature):
+                label += ' ({})'.format(feature_type.codebook_type.__name__)            
             item = QListWidgetItem(self.features_list)
-            checkbox = QCheckBox(feature.label)
-            if feature in self.preselected:
+            checkbox = QCheckBox(label)
+            if feature_type in self.preselected:
                 checkbox.setChecked(True)
             self.features_list.setItemWidget(item, checkbox)             
         
+        self.clear_button.pressed.connect(self.clear_queue)
         self.start_button.pressed.connect(self.start)
         self.close_button.pressed.connect(self.close)
         
     def enqueue_images(self, images):        
-        pass
+        raise NotImplementedError
+    
+    def clear_queue(self):        
+        raise NotImplementedError
         
     # called on events connected via installFilterEvent
     def eventFilter(self, object, event):
@@ -379,12 +398,20 @@ class BatchFeatureDialog(QDialog, Ui_FeatureDialog):
         pass
         
     def close(self):       
-        self.data.close()      
+        self.store.close()      
         super(BatchFeatureDialog, self).close()
         
 class BuildDictionaryDialog(BatchFeatureDialog):
     def __init__(self, preselected=[], parent=None):
         super(BuildDictionaryDialog, self).__init__(preselected, parent)
+        self.setWindowTitle('Extract Dictionary to {}'.format(config.source))
+        for index in range(self.features_list.count()):
+            feat_type = FEATURES[index]                
+            checkbox = self.features_list.itemWidget(
+                self.features_list.item(index))            
+            if not issubclass(feat_type, UnsupervisedFeature):   
+                checkbox.setChecked(False)
+                checkbox.setEnabled(False)
         # actually not a queue, but a dict. 
         self.files = []
         
@@ -392,6 +419,10 @@ class BuildDictionaryDialog(BatchFeatureDialog):
         self.files = images       
         for file in self.files:
             self.image_queue_text.insertHtml('<i>{}</i><br>'.format(file))   
+            
+    def clear_queue(self):        
+        self.files = []
+        self.image_queue_text.clear()
         
     def start(self):
         self.processor = Binarize()
@@ -404,70 +435,90 @@ class BuildDictionaryDialog(BatchFeatureDialog):
         store = config.data()
         store.open(config.source)
         for feat_type in feat_types:
-            raw_features = None
-            dictionary = feat_type.dictionary_type()
-            for input_file in self.files:
-                #if self.stop_requested:
-                    #break      
-                image = read_image(input_file)
-                binary = self.processor.process(image)  
-                # category doesn't matter here
-                feat = feat_type('')            
-                feat.describe(binary)
-                if raw_features is None:
-                    raw_features = feat._raw
-                else:
-                    raw_features = np.concatenate((raw_features, feat._raw), 
-                                                  axis=0)
-            dictionary.build(raw_features)
-            store.save_dictionary(dictionary, feat_type)
-            
+            build_codebook(feat_type, self.files, store)            
         
 class ExtractFeatureDialog(BatchFeatureDialog):
     
     def __init__(self, preselected=[], parent=None):
         super(ExtractFeatureDialog, self).__init__(preselected, parent)
         # actually not a queue, but a dict. 
+        self.setWindowTitle('Extract Features to {}'.format(config.source))
         self.file_queue = OrderedDict() 
+        self.av_species = self.store.get_categories()
         self.replace_check = QCheckBox('replace existing feature/species ' +
                                        'combinations in store')
         self.replace_check.setChecked(True)
-        self.crop_check = QCheckBox('segment and crop the images, before ' +
-                                    'extracting the features (not needed ' +
-                                    'if already cropped)') 
+        #self.crop_check = QCheckBox('segment and crop the images, before ' +
+                                    #'extracting the features (not needed ' +
+                                    #'if already cropped)') 
         
-        self.gridLayout.addWidget(self.crop_check, 9, 0, 1, 3)
-        self.gridLayout.addWidget(self.replace_check, 8, 0, 1, 3)
+        #self.gridLayout.addWidget(self.crop_check, 9, 0, 1, 3)
+        self.codebook_check = QCheckBox('build (and replace) codebook from ' +
+                                        'images') 
         
-    def enqueue_images(self, images):        
+        self.checkbox_layout.addWidget(self.replace_check)                      
+        self.checkbox_layout.addWidget(self.codebook_check)
+        
+        self.browse_button = QPushButton('add folder')
+        self.button_layout.addWidget(self.browse_button)        
+        
+        self.browse_button.pressed.connect(self.browse_folder)
+        
+    def enqueue_images(self, images): 
         if len(images) > 0:     
-            av_species = self.data.get_categories()
-            species, result = SelectSpeciesDialog.get_species(av_species, 
+            species, result = SelectSpeciesDialog.get_species(self.av_species, 
                                                               parent=self)
             if not result:
                 return
             if species not in self.file_queue:
                 self.file_queue[species]= images
             else:
-                self.file_queue[species] += images    
-        self.image_queue_text.clear()
+                self.file_queue[species] += images
+        self._update_textbox()
+        
+    def browse_folder(self):
+        folder = browse_folder('Select Output Folder', parent=self)
+        if folder:
+            for lst in os.listdir(folder):
+                l_folder = os.path.join(folder, lst)
+                if os.path.isdir(l_folder):
+                    species = lst
+                    if species not in self.file_queue:
+                        self.file_queue[species] = []
+                    for f in os.listdir(l_folder):
+                        f_folder = os.path.join(l_folder, f)
+                        if (os.path.isfile(f_folder) and 
+                            f.lower().endswith('jpg') or 
+                            f.lower().endswith('png')):
+                            self.file_queue[species].append(f_folder)
+        self._update_textbox()
+        
+    def _update_textbox(self):
+        self.image_queue_text.clear() 
         for species, images in self.file_queue.items():
             self.image_queue_text.insertHtml('<b>{}</b><br>'.format(species))
             for f in images:
-                self.image_queue_text.insertHtml('<i>{}</i><br>'.format(f))         
+                self.image_queue_text.insertHtml('<i>{}</i><br>'.format(f))  
+                
+    def clear_queue(self):        
+        self.file_queue.clear()     
+        self.image_queue_text.clear()           
     
     def start(self):
-        features = []
+        feature_types = []
         for index in range(self.features_list.count()):
-            checkbox = self.features_list.itemWidget(self.features_list.item(index))
+            checkbox = self.features_list.itemWidget(
+                self.features_list.item(index))
             if checkbox.isChecked():
-                features.append(FEATURES[index])
+                feature_types.append(FEATURES[index])
         if len(self.file_queue) == 0:
             return
         replace = self.replace_check.isChecked()
-        diag = ProgressDialog(FeatureThread(self.file_queue, 
-                                            self.data, features, 
-                                            replace=replace),
+        build_codebook = self.codebook_check.isChecked()
+        diag = ProgressDialog(ExtractFeatureThread(self.file_queue, 
+                                                   self.store, feature_types, 
+                                                   build_codebook=build_codebook,
+                                                   replace=replace),
                               parent=self)
         diag.exec_()     
 
@@ -522,15 +573,17 @@ class SelectSpeciesDialog(QDialog):
         selection = dialog.species_combo.currentText()   
         return selection, result == QDialog.Accepted
         
-class FeatureThread(ProgressThread):
+class ExtractFeatureThread(ProgressThread):
     
-    def __init__ (self, files, data, feature_types, replace=False):
-        super(FeatureThread, self).__init__()
+    def __init__ (self, files, data, feature_types, build_codebook=False, 
+                  replace=False):
+        super(ExtractFeatureThread, self).__init__()
         self.files = files
         self.processor = Binarize()
-        self.data = data
+        self.store = data
         self.feature_types = feature_types
         self.replace = replace
+        self.build_codebook = build_codebook
         
     def run(self):
         self.stop_requested = False
@@ -542,13 +595,30 @@ class FeatureThread(ProgressThread):
         self.status.emit('<b>Extracting features from {} '.format(file_count) +
                          'files...</b><br>', 0)
         features = []      
+        
+        feat_codebook_dict = {}
+        for feat_type in self.feature_types:      
+            if issubclass(feat_type, UnsupervisedFeature):
+                if self.build_codebook:
+                    picked = []
+                    # pick 3 images per species to build codebook
+                    for species, files in self.files.items():
+                        idx = np.random.choice(len(files), 3)
+                        picked += list(np.array(files)[idx])
+                    self.status.emit('Building codebook from ' +
+                                     '{} randomly picked files...'
+                                     .format(len(picked)), -1)
+                    feat_codebook_dict[feat_type] = build_codebook(
+                        feat_type, picked, self.store)  
+                else:
+                    feat_codebook_dict[feat_type] = self.store.get_codebook(
+                        feat_type)               
         for species, files in self.files.items():
             if self.stop_requested:
                 break              
             for input_file in files:  
                 if self.stop_requested:
                     break              
-                image = read_image(input_file)
                 if not os.path.exists(input_file):
                     text = ('<font color="red"><i>{f}</i> '.format(f=input_file) + 
                             'skipped, does not exist</font>')
@@ -556,16 +626,21 @@ class FeatureThread(ProgressThread):
                     text = ('<font color="red"><i>{f}</i> '.format(f=input_file) + 
                             'skipped, Umlaute not supported</font>')
                 else:
+                    image = read_image(input_file)
                     binary = self.processor.process(image)  
                     for feat_type in self.feature_types:
                         feat = feat_type(species)
                         feat.describe(binary)
+                        if feat_type in feat_codebook_dict:
+                            codebook = feat_codebook_dict[feat_type]
+                            feat.histogram(codebook)
                         features.append(feat)
                         text = '{feature} extracted from <i>{file}</i>'.format(
                             feature=feat.label, file=input_file)
                         self.status.emit(text, progress)                                    
-                progress += step                    
-        self.data.add_features(features, replace=self.replace)
+                progress += step     
+        self.status.emit('Storing features, this may take a while...', -1)            
+        self.store.add_features(features, replace=self.replace)
         #self.data.commit()
         text = '{} features'.format(len(features))
         if self.replace:
@@ -620,3 +695,24 @@ class WaitDialog(QDialog):
             super(WaitDialog, self).closeEvent(evnt)
         else:
             evnt.ignore() 
+            
+def build_codebook(feat_type, files, store):
+    codebook = feat_type.codebook_type()
+    processor = Binarize()
+    raw_features = None
+    for input_file in files:
+        #if self.stop_requested:
+            #break      
+        image = read_image(input_file)
+        binary = processor.process(image)  
+        # category doesn't matter here
+        feat = feat_type('')            
+        feat.describe(binary)
+        if raw_features is None:
+            raw_features = feat.values
+        else:
+            raw_features = np.concatenate((raw_features, feat.values), 
+                                          axis=0)               
+    codebook.fit(raw_features)
+    store.save_codebook(codebook, feat_type)            
+    return codebook
