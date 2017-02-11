@@ -34,15 +34,12 @@ class MLP(Classifier):
         return classes
     
     def serialize(self):
-        serialized = pickle.dumps(self.model)
         trained_features = [class_to_string(ft) for ft in self.trained_features]
-        return [serialized, trained_features, self.trained_categories]
+        return [trained_features, self.trained_categories]
     
     def deserialize(self, serialized):
-        self.model = pickle.loads(serialized[0])
-        self.trained_features = [load_class(ft) for ft in serialized[1]]
-        self.trained_categories = serialized[2]
-        #self.meta = serialized[1]
+        self.trained_features = [load_class(ft) for ft in serialized[0]]
+        self.trained_categories = serialized[1]
         
         
 class ComplexMLP(MLP):

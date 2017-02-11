@@ -1,5 +1,5 @@
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
-from masterarbeit.model.features.idsc import IDSCDict, IDSCKMeans
+from masterarbeit.model.features.idsc import IDSCDict, IDSCKMeans, IDSCGaussiansKMeans
 from masterarbeit.model.classifiers.mlp import ComplexMLP
 from masterarbeit.model.classifiers.svm import SVM
 from masterarbeit.model.features.moments import ZernikeMoments, HuMoments
@@ -79,7 +79,8 @@ if __name__ == '__main__':
     h5.open('../../hdf5_test.h5')     
     #features = h5.get_features(IDSCDict)      
     #features = h5.get_features(ZernikeMoments)  
-    features = h5.get_features(IDSCKMeans) 
+    #features = h5.get_features(IDSCKMeans) 
+    features = h5.get_features(IDSCGaussiansKMeans) 
 
     classifier = ComplexMLP('IDSCDictTESTbatch') 
     #classifier = SVM('IDSCDictTESTbatch')

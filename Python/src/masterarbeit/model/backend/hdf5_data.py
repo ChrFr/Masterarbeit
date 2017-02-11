@@ -155,42 +155,44 @@ class HDF5Pandas(Data):
     def save_classifier(self, classifier):
         table_path = self.model_path.format(model=type(classifier).__name__,
                                             name=classifier.name)
-        #self.store[table_path] = pd.DataFrame(classifier.serialize())
-        #self.commit()
+        serialized = np.array(classifier.serialize())
+        self.store[table_path] = pd.DataFrame(serialized)
+        self.commit()        
         
-        out_store = tables.open_file(self.source, mode='a')   
         # keras provides method to save model, but only in single file
         # write file and copy it into the main source
-        if isinstance(classifier.model, KerasModel):            
+        if isinstance(classifier.model, KerasModel):      
+            out_store = tables.open_file(self.source, mode='a')   
+            keras_path = table_path + '/keras'      
             tmp_dir = tempfile.mkdtemp()
             f_name = '{}.h5'.format(uuid.uuid4())
             tmp_file = os.path.join(tmp_dir, f_name)
             self._save_keras_model(classifier.model, tmp_file) 
             try:
                 in_store = tables.openFile(tmp_file, mode='a')             
-                self._copy_group(in_store, '/', out_store, table_path)
+                self._copy_group(in_store, '/', out_store, keras_path)
                 # keras saves model attributes to root
                 for config_attr in ['model_config', 'training_config']:
                     model_config = in_store.get_node_attr('/', config_attr)
-                    out_store.set_node_attr('/' + table_path, config_attr, 
+                    out_store.set_node_attr('/' + keras_path, config_attr, 
                                             model_config) 
             finally:             
                 in_store.close()
                 shutil.rmtree(tmp_dir)    
-        classifier_config = OrderedDict()  
-        classifier_config['type'] = type(classifier).__name__
-        
-        feat_types_ser = [class_to_string(ft) 
-                          for ft in classifier.trained_features]
-        now = datetime.datetime.now().strftime(DATETIME_FORMAT) 
-        classifier_config['date'] = now
-        classifier_config['feature types'] = feat_types_ser
-        classifier_config['input dim'] = classifier.input_dim
-        classifier_config['trained categories'] = classifier.trained_categories
-        out_store.set_node_attr(self.root + table_path, 
-                                self.classifier_config_attr, 
-                                json.dumps(classifier_config))
-        out_store.close()          
+            classifier_config = OrderedDict()  
+            classifier_config['type'] = type(classifier).__name__
+            
+            feat_types_ser = [class_to_string(ft) 
+                              for ft in classifier.trained_features]
+            now = datetime.datetime.now().strftime(DATETIME_FORMAT) 
+            classifier_config['date'] = now
+            #classifier_config['feature types'] = feat_types_ser
+            classifier_config['input dim'] = classifier.input_dim
+            #classifier_config['trained categories'] = classifier.trained_categories
+            out_store.set_node_attr(self.root + keras_path, 
+                                    self.classifier_config_attr, 
+                                    json.dumps(classifier_config))
+            out_store.close()                      
             
     def get_classifiers(self):
         classifiers = {}
@@ -214,30 +216,29 @@ class HDF5Pandas(Data):
         classifier = cls(name)
         table_path = self.model_path.format(model=cls.__name__,
                                             name=name)
-        #if table_path not in self.store:
-            #return None
-        #df = self.store.get(table_path)
-        #serialized = df.as_matrix()
-        ## if array was stored, no need for 2nd dim
-        #if serialized.shape[1] == 1:
-            #serialized = serialized[:, 0]
-        #classifier.deserialize(serialized)
-        #return classifier
+        if table_path not in self.store:
+            return None
+        df = self.store.get(table_path)
+        serialized = df.as_matrix()
+        # if 1d array was stored, no need for 2nd dim
+        if serialized.shape[1] == 1:
+            serialized = serialized[:, 0]
     
         status = OrderedDict()
         # keras provides method to load modelfrom single file
         # copy model-group into file to load it
-        in_store = tables.openFile(self.source, mode='a')
         if isinstance(classifier.model, KerasModel): 
+            keras_path = table_path + '/keras'
+            in_store = tables.openFile(self.source, mode='a')
             tmp_dir = tempfile.mkdtemp()
             f_name = '{}.h5'.format(uuid.uuid4())
             tmp_file = os.path.join(tmp_dir, f_name)
             try:        
                 out_store = tables.open_file(tmp_file, mode='a')
-                self._copy_group(in_store, table_path, out_store, '/', 
+                self._copy_group(in_store, keras_path, out_store, '/', 
                                  keep_group=False)
                 for config_attr in ['model_config', 'training_config']:
-                    config = in_store.get_node_attr('/' + table_path, 
+                    config = in_store.get_node_attr('/' + keras_path, 
                                                     config_attr)
                     out_store.set_node_attr('/',  config_attr, config)
                     status[config_attr] = json.loads(config.astype(str))
@@ -248,17 +249,19 @@ class HDF5Pandas(Data):
             finally:   
                 out_store.close()                
                 shutil.rmtree(tmp_dir) 
-        classifier_config = in_store.get_node_attr(self.root + table_path, 
-                                                   self.classifier_config_attr)
-        cls_config = json.loads(classifier_config)
-        status['classifier'] = cls_config
-        feature_types = [load_class(ft) 
-                         for ft in cls_config['feature types']]
-        classifier.trained_features = feature_types
-        classifier.trained_categories = cls_config['trained categories']
-        status.move_to_end('classifier', last=False)
-        in_store.close()        
-        classifier.meta = status
+            classifier_config = in_store.get_node_attr(self.root + keras_path, 
+                                                       self.classifier_config_attr)
+            cls_config = json.loads(classifier_config)
+            status['classifier'] = cls_config
+            #feature_types = [load_class(ft) 
+                             #for ft in cls_config['feature types']]
+            #classifier.trained_features = feature_types
+            #classifier.trained_categories = cls_config['trained categories']
+            status.move_to_end('classifier', last=False)
+            in_store.close()        
+            classifier.meta = status            
+        
+        classifier.deserialize(serialized)
         return classifier        
     
     def delete_classifier(self, cls, name):
@@ -279,7 +282,7 @@ class HDF5Pandas(Data):
             return None
         df = self.store.get(table_path)
         serialized = df.as_matrix()
-        codebook = feature_type.codebook_type()
+        codebook = feature_type.new_codebook()
         codebook.deserialize(serialized)
         return codebook
     

@@ -37,10 +37,10 @@ class Classifier(metaclass=ABCMeta):
         unique_cat, classes, count = np.unique(categories, 
                                                return_inverse=True, 
                                                return_counts=True)
-        self.trained_categories = unique_cat       
-        unique_cat_count = zip(*(unique_cat, count))
-        cat_str = ['{}({})'.format(u[0], u[1]) for u in unique_cat_count]
-        self.trained_categories = ', '.join(cat_str)
+        self.trained_categories = list(unique_cat)
+        #unique_cat_count = zip(*(unique_cat, count))
+        #cat_str = ['{}({})'.format(u[0], u[1]) for u in unique_cat_count]
+        #self.trained_categories = ', '.join(cat_str)
         n_classes = len(unique_cat)
         values = np.array(values)
         print('Start training for {} categories '.format(n_classes) +
@@ -58,7 +58,7 @@ class Classifier(metaclass=ABCMeta):
         #if feat_type not in self.trained_feature_types
         values = np.array([feat.values for feat in features])    
         classes = self._predict(values)
-        return np.array(self.trained_categories)[classes]
+        return np.array(np.array(self.trained_categories))[classes]
     
     def validate(self, features):
         '''

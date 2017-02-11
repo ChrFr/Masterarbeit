@@ -576,7 +576,7 @@ class SelectSpeciesDialog(QDialog):
 class ExtractFeatureThread(ProgressThread):
     
     def __init__ (self, files, data, feature_types, build_codebook=False, 
-                  replace=False):
+                  replace=False, store_every_n_step=100):
         super(ExtractFeatureThread, self).__init__()
         self.files = files
         self.processor = Binarize()
@@ -584,6 +584,7 @@ class ExtractFeatureThread(ProgressThread):
         self.feature_types = feature_types
         self.replace = replace
         self.build_codebook = build_codebook
+        self.store_every_n_step = store_every_n_step
         
     def run(self):
         self.stop_requested = False
@@ -596,23 +597,8 @@ class ExtractFeatureThread(ProgressThread):
                          'files...</b><br>', 0)
         features = []      
         
-        feat_codebook_dict = {}
-        for feat_type in self.feature_types:      
-            if issubclass(feat_type, UnsupervisedFeature):
-                if self.build_codebook:
-                    picked = []
-                    # pick 3 images per species to build codebook
-                    for species, files in self.files.items():
-                        idx = np.random.choice(len(files), 3)
-                        picked += list(np.array(files)[idx])
-                    self.status.emit('Building codebook from ' +
-                                     '{} randomly picked files...'
-                                     .format(len(picked)), -1)
-                    feat_codebook_dict[feat_type] = build_codebook(
-                        feat_type, picked, self.store)  
-                else:
-                    feat_codebook_dict[feat_type] = self.store.get_codebook(
-                        feat_type)               
+        feat_codebook_dict = self.get_codebook_dict()  
+        
         for species, files in self.files.items():
             if self.stop_requested:
                 break              
@@ -638,7 +624,37 @@ class ExtractFeatureThread(ProgressThread):
                         text = '{feature} extracted from <i>{file}</i>'.format(
                             feature=feat.label, file=input_file)
                         self.status.emit(text, progress)                                    
-                progress += step     
+                progress += step    
+                #if progress % self.store_every_n_step == 0:                    
+                    #self.add_features(features)     
+                    #features = []
+        self.add_features(features)
+        self.status.emit(text, 100)   
+        
+    def get_codebook_dict(self):
+        feat_codebook_dict = {}
+        for feat_type in self.feature_types:      
+            if issubclass(feat_type, UnsupervisedFeature):
+                if self.build_codebook:
+                    picked = []
+                    # pick 3 images per species to build codebook
+                    for species, files in self.files.items():
+                        idx = np.random.choice(len(files), 3)
+                        picked += list(np.array(files)[idx])
+                    self.status.emit('Building codebook from ' +
+                                     '{} randomly picked files'
+                                     .format(len(picked)) +
+                                     ' (3 per species)...', -1)
+                    feat_codebook_dict[feat_type] = build_codebook(
+                        feat_type, picked, self.store)  
+                else:
+                    feat_codebook_dict[feat_type] = self.store.get_codebook(
+                        feat_type)   
+        return feat_codebook_dict
+        
+    def add_features(self, features):   
+        if len(features) == 0:
+            return
         self.status.emit('Storing features, this may take a while...', -1)            
         self.store.add_features(features, replace=self.replace)
         #self.data.commit()
@@ -646,8 +662,7 @@ class ExtractFeatureThread(ProgressThread):
         if self.replace:
             text += ' stored, replacing old entries'
         else:
-            text += ' appended to store'
-        self.status.emit(text, 100)   
+            text += ' appended to store'        
 
 class WaitDialog(QDialog):
     finished = QtCore.pyqtSignal()
@@ -697,9 +712,10 @@ class WaitDialog(QDialog):
             evnt.ignore() 
             
 def build_codebook(feat_type, files, store):
-    codebook = feat_type.codebook_type()
+    codebook = feat_type.new_codebook()
     processor = Binarize()
-    raw_features = None
+    raw_features = []
+    print('Extracting features for codebook...')
     for input_file in files:
         #if self.stop_requested:
             #break      
@@ -708,11 +724,10 @@ def build_codebook(feat_type, files, store):
         # category doesn't matter here
         feat = feat_type('')            
         feat.describe(binary)
-        if raw_features is None:
-            raw_features = feat.values
-        else:
-            raw_features = np.concatenate((raw_features, feat.values), 
-                                          axis=0)               
+        raw_features.append(feat)
+            
+    print('Fitting codebook with extracted features')            
     codebook.fit(raw_features)
-    store.save_codebook(codebook, feat_type)            
+    store.save_codebook(codebook, feat_type)    
+    print('Codebook built and stored.\n')         
     return codebook

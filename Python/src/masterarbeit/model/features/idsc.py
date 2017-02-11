@@ -16,9 +16,12 @@ def get_points_on_line(p1, p2, n=10):
     return zip(x, y)
 
 class IDSC(UnsupervisedFeature):
-    
+    '''
+    subclass this, no dictionary and histo length defined
+    '''    
     label = 'Inner Distance Shape Context'
-    codebook_type = None    
+    codebook_type = None
+    histogram_length = None
     n_contour_points = 300
     n_angle_buckets = 8
     n_distance_buckets = 8
@@ -137,6 +140,9 @@ class IDSC(UnsupervisedFeature):
     
     
 class IDSCGaussians(IDSC):
+    '''
+    subclass this, no dictionary attached
+    '''
     label = 'Gaussian Inner Distance Shape Context'
     # gauss kernels, coarsest to finest, determines number of gauss levels
     gauss_kernels = [(501, 501), (101, 101), None]
@@ -152,7 +158,10 @@ class IDSCGaussians(IDSC):
         
         max_distance = distance((0, 0), binary.shape)
         n_levels = len(self.gauss_kernels)
-        level_context = []
+        level_contexts = []
+        # grayscale image needed for thresholding gauss
+        if binary.max() == 1:
+            binary = binary.copy() * 255
         for i, gauss_kernel in enumerate(self.gauss_kernels):
             # starting with the coarsest level
             gauss_level = n_levels - i
@@ -178,10 +187,10 @@ class IDSCGaussians(IDSC):
             
             # get the shape context in max_distance (skip distant points)
             context = self._build_shape_context(dist_matrix, contour_points,
-                                                skip_distant_points=True)        
-            level_context.append(context)
+                                                skip_distant_points=True)  
+            level_contexts.append(context)
             
-            ### Visualisation of gauss levels###
+            ### Visualisation of gauss levels ###
                 
             if steps is not None:
                 thickness = int(20 / (i + 1))
@@ -198,25 +207,31 @@ class IDSCGaussians(IDSC):
                                  color=(255, 0, 0))                
                 steps['gauss level {}'.format(gauss_level)] = img
                 
-                
-        self._v = level_context                
+        self._v = level_contexts
         
+### the callable classes with defined codebook types ###
     
 class IDSCKMeans(IDSC):
     codebook_type = KMeansCodebook
-    columns = np.arange(0, codebook_type.n_components).astype(np.str)
+    histogram_length = 50
+    columns = np.arange(0, histogram_length).astype(np.str)
     
     
 class IDSCDict(IDSC):
     codebook_type = DictLearningCodebook
-    columns = np.arange(0, codebook_type.n_components).astype(np.str)
+    histogram_length = 100
+    columns = np.arange(0, histogram_length).astype(np.str)
     
 
-class IDSCGaussiansKMeans(IDSC):
+class IDSCGaussiansKMeans(IDSCGaussians):
     label = 'Gaussian Inner Distance Shape Context'
+    histogram_length = 100
     codebook_type = KMeansCodebook
+    columns = np.arange(0, histogram_length).astype(np.str)
 
 
-class IDSCGaussiansDict(IDSC):
+class IDSCGaussiansDict(IDSCGaussians):
     label = 'Gaussian Inner Distance Shape Context'
+    histogram_length = 100
     codebook_type = DictLearningCodebook
+    columns = np.arange(0, histogram_length).astype(np.str)

@@ -35,24 +35,21 @@ class Feature(metaclass=ABCMeta):
     
 class UnsupervisedFeature(Feature):
     n_levels = 1
-    codebook_type = None     
+    codebook_type = None
+    histogram_length = 50
     
-    @staticmethod
-    def new_codebook():
-        codebook = self.codebook_type(self.n_levels)
+    @classmethod
+    def new_codebook(cls):
+        codebook = cls.codebook_type(cls.histogram_length, 
+                                     n_levels=cls.n_levels)
+        return codebook
         
     def __init__(self, category):
         super(UnsupervisedFeature, self).__init__(category)
         
     def histogram(self, codebook):
-        values = self.values
         if not isinstance(codebook, self.codebook_type):
             raise Exception('Feature requires {} to build an histogram'
                             .format(self.codebook_type.__name__))
-        if len(codebook) != len(self):
-            raise Exception('Length of atoms mismatch! ({}!={})i'.format(
-                len(codebook), len(self)               
-            ))        
-        feature_vector = values.reshape(values.shape[0], -1) 
-        self._v = codebook.histogram(feature_vector) 
+        self._v = codebook.histogram(self.values) 
                 
