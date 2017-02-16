@@ -7,7 +7,9 @@ import pickle
 
 from abc import ABCMeta, abstractmethod
 
-class Codebook(metaclass=ABCMeta):  
+class Codebook(metaclass=ABCMeta): 
+    # the number of different description levels, 
+    # each level gets a codebook itself
     n_levels = 1
     
     def __init__(self, n_components, n_levels=1):
@@ -29,6 +31,8 @@ class Codebook(metaclass=ABCMeta):
         # distribute the values to the matching codebook level
         for feat in features:
             values = feat.values
+            if self.n_levels <= 1: 
+                values = [values]
             for level, v in enumerate(values):
                 feature_values[level] += list(v)
         
@@ -38,6 +42,10 @@ class Codebook(metaclass=ABCMeta):
             self.codebooks.append(codebook)
       
     def histogram(self, feature_values):
+        '''
+        histo from level 1 to level n (as in feature)
+        equally distributed
+        '''
         # if only one level is expected, make 1st dim. to level-dim.
         if self.n_levels <= 1:
             feature_values = [feature_values]
@@ -51,8 +59,6 @@ class Codebook(metaclass=ABCMeta):
         return histogram
         
     def deserialize(self, serialized):
-        if self.n_levels <= 1:
-            serialized = [serialized]
         for i in range(self.n_levels):
             self.codebooks.append(self._deserialize(serialized[i]))
     
@@ -107,8 +113,7 @@ class DictLearningCodebook(Codebook):
         return norm_hist
             
     def _deserialize(self, serialized):
-        #self.codebook = pickle.loads(serialized[0])
-        components = serialized
+        components = serialized.reshape(self.n_components, -1)
         # use coder instead of dictionary, performance wise
         coder = SparseCoder(components)  
         return coder
@@ -116,7 +121,7 @@ class DictLearningCodebook(Codebook):
     def _serialize(self, codebook):        
         #serialized = pickle.dumps(self.codebook) 
         #return np.array([serialized])
-        return codebook.components_  
+        return codebook.components_.reshape(-1)
             
     
 class KMeansCodebook(Codebook):
@@ -132,7 +137,8 @@ class KMeansCodebook(Codebook):
         return codebook
         
     def _deserialize(self, serialized):
-        codebook = pickle.loads(serialized[0])
+        serialized = serialized[0]
+        codebook = pickle.loads(serialized)
         return codebook
     
     def _serialize(self, codebook):

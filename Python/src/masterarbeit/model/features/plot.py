@@ -1,6 +1,7 @@
 import seaborn as sns
 import pandas as pd
 import numpy as np
+from masterarbeit.model.features.common import features_to_dataframe
 
 def pairplot(features, max_dim=None, do_show=False):
     sns.set(style="ticks", color_codes=True)      

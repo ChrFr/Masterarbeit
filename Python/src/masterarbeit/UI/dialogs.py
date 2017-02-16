@@ -2,7 +2,7 @@
 from PyQt5.QtWidgets import (QDialog, QInputDialog, QListWidgetItem, QCheckBox,
                              QComboBox, QDialogButtonBox, QPushButton,
                              QGridLayout, QSpacerItem, QSizePolicy, QLabel,
-                             QVBoxLayout)
+                             QVBoxLayout, QMessageBox)
 from PyQt5 import Qt, QtCore, QtGui
 import time, datetime
 import os, re, sys
@@ -28,7 +28,7 @@ def error_message(text, parent=None):
     msg.setWindowTitle('Error')
     msg.setIcon(QMessageBox.Warning)
     msg.setText(text) 
-    msg.exec_().s
+    msg.exec_()
 
 def browse_file(title='Select File', filters=[ALL_FILES_FILTER], 
                 multiple=False, save=False, parent=None):
@@ -477,8 +477,7 @@ class ExtractFeatureDialog(BatchFeatureDialog):
         self._update_textbox()
         
     def browse_folder(self):
-        folder = browse_folder('Select Output Folder', parent=self)
-        if folder:
+        def add_folder(folder):
             for lst in os.listdir(folder):
                 l_folder = os.path.join(folder, lst)
                 if os.path.isdir(l_folder):
@@ -491,7 +490,13 @@ class ExtractFeatureDialog(BatchFeatureDialog):
                             f.lower().endswith('jpg') or 
                             f.lower().endswith('png')):
                             self.file_queue[species].append(f_folder)
-        self._update_textbox()
+            
+        folder = browse_folder('Select Output Folder', parent=self)
+        if folder:
+            diag = WaitDialog(lambda: add_folder(folder),                           
+                              parent=self) 
+            diag.finished.connect(self._update_textbox)
+            diag.run()        
         
     def _update_textbox(self):
         self.image_queue_text.clear() 
@@ -595,11 +600,11 @@ class ExtractFeatureThread(ProgressThread):
         progress = 0
         self.status.emit('<b>Extracting features from {} '.format(file_count) +
                          'files...</b><br>', 0)
-        features = []      
         
         feat_codebook_dict = self.get_codebook_dict()  
         
         for species, files in self.files.items():
+            features_per_species = []   
             if self.stop_requested:
                 break              
             for input_file in files:  
@@ -613,22 +618,32 @@ class ExtractFeatureThread(ProgressThread):
                             'skipped, Umlaute not supported</font>')
                 else:
                     image = read_image(input_file)
-                    binary = self.processor.process(image)  
+                    binary = None                     
                     for feat_type in self.feature_types:
-                        feat = feat_type(species)
-                        feat.describe(binary)
-                        if feat_type in feat_codebook_dict:
-                            codebook = feat_codebook_dict[feat_type]
-                            feat.histogram(codebook)
-                        features.append(feat)
-                        text = '{feature} extracted from <i>{file}</i>'.format(
-                            feature=feat.label, file=input_file)
+                        feat = feat_type(species)   
+                        if feat_type.binary_input:
+                            if binary is None:
+                                binary = self.processor.process(image)           
+                            input_img = binary
+                        else:
+                            input_img = image
+                        success = feat.describe(input_img)
+                        if not success:
+                            text = ('failure while extracting {feature} ' +
+                                    'from <i>{file}</i>')
+                        else:
+                            text = '{feature} extracted from <i>{file}</i>'          
+                            if feat_type in feat_codebook_dict:
+                                codebook = feat_codebook_dict[feat_type]
+                                feat.histogram(codebook)                                
+                            features_per_species.append(feat)                                
+                        text = text.format(feature=feat.label, file=input_file)     
                         self.status.emit(text, progress)                                    
                 progress += step    
                 #if progress % self.store_every_n_step == 0:                    
                     #self.add_features(features)     
                     #features = []
-        self.add_features(features)
+            self.add_features(features_per_species, species)            
         self.status.emit(text, 100)   
         
     def get_codebook_dict(self):
@@ -641,10 +656,10 @@ class ExtractFeatureThread(ProgressThread):
                     for species, files in self.files.items():
                         idx = np.random.choice(len(files), 3)
                         picked += list(np.array(files)[idx])
-                    self.status.emit('Building codebook from ' +
-                                     '{} randomly picked files'
-                                     .format(len(picked)) +
-                                     ' (3 per species)...', -1)
+                    self.status.emit(
+                        'Building {} '.format(feat_type.codebook_type.__name__) +
+                        'from {} randomly picked files'.format(len(picked)) +
+                        ' (3 per species)...', -1)
                     feat_codebook_dict[feat_type] = build_codebook(
                         feat_type, picked, self.store)  
                 else:
@@ -652,11 +667,11 @@ class ExtractFeatureThread(ProgressThread):
                         feat_type)   
         return feat_codebook_dict
         
-    def add_features(self, features):   
+    def add_features(self, features, species=None):   
         if len(features) == 0:
             return
-        self.status.emit('Storing features, this may take a while...', -1)            
-        self.store.add_features(features, replace=self.replace)
+        self.status.emit('Storing features, this may take a while...', -1)   
+        self.store.add_features(features, category=species, replace=self.replace)
         #self.data.commit()
         text = '{} features'.format(len(features))
         if self.replace:
@@ -720,11 +735,13 @@ def build_codebook(feat_type, files, store):
         #if self.stop_requested:
             #break      
         image = read_image(input_file)
-        binary = processor.process(image)  
         # category doesn't matter here
         feat = feat_type('')            
-        feat.describe(binary)
-        raw_features.append(feat)
+        if feat.binary_input:
+            image = processor.process(image)  
+        success = feat.describe(image)
+        if success:
+            raw_features.append(feat)
             
     print('Fitting codebook with extracted features')            
     codebook.fit(raw_features)

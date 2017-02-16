@@ -73,6 +73,9 @@ class Ui_FeatureDialog(object):
         spacerItem3 = QtWidgets.QSpacerItem(40, 20, QtWidgets.QSizePolicy.Expanding, QtWidgets.QSizePolicy.Minimum)
         self.button_layout.addItem(spacerItem3)
         self.gridLayout.addLayout(self.button_layout, 5, 0, 1, 3)
+        self.label_2 = QtWidgets.QLabel(FeatureDialog)
+        self.label_2.setObjectName("label_2")
+        self.gridLayout.addWidget(self.label_2, 0, 0, 1, 1)
 
         self.retranslateUi(FeatureDialog)
         QtCore.QMetaObject.connectSlotsByName(FeatureDialog)
@@ -87,4 +90,5 @@ class Ui_FeatureDialog(object):
         self.clear_button.setText(_translate("FeatureDialog", "clear"))
         self.features_box.setTitle(_translate("FeatureDialog", "Features"))
         self.images_browse_button.setText(_translate("FeatureDialog", "Add Images to Queue"))
+        self.label_2.setText(_translate("FeatureDialog", "Advice: Use already segmented images only!"))
 

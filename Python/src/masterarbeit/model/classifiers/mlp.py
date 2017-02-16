@@ -1,10 +1,10 @@
+import numpy as np
 from keras.models import Sequential
 from keras.layers import Dense, Dropout, Activation
 from keras.optimizers import SGD
 from keras.utils import np_utils
 from sklearn.model_selection import KFold
 from sklearn.preprocessing import LabelEncoder
-import numpy as np
 import copy
 import pickle
 
@@ -14,6 +14,9 @@ from masterarbeit.model.backend.data import load_class, class_to_string
 
 class MLP(Classifier):   
     label = 'Multilayer Perceptron'
+    verbose = 2
+    epoch = 300
+    batch_size = 16
     
     def __init__(self, name):
         super(MLP, self).__init__(name)
@@ -26,7 +29,8 @@ class MLP(Classifier):
         
         self.setup_model(input_dim, n_classes)        
         self.model.fit(values, encoded_categories, 
-                       nb_epoch=300, batch_size=16, verbose=2)
+                       nb_epoch=self.epoch, batch_size=self.batch_size, 
+                       verbose=self.verbose)
         
     def _predict(self, values):
         predictions = self.model.predict(values, batch_size=16)   
@@ -44,21 +48,20 @@ class MLP(Classifier):
         
 class ComplexMLP(MLP):
     label = 'Multilayer Perceptron 64x64'
+    dense_layers = 1
+    activation = 'relu'
+    hidden_units = 64
     def setup_model(self, input_dim, n_categories):    
         self.input_dim = input_dim
-        ## Dense(64) is a fully-connected layer with 64 hidden units.
-        ## in the first layer, you must specify the expected input data shape:
-        ## here, 20-dimensional vectors.
-        self.model.add(Dense(64, input_dim=input_dim, init='uniform'))
-        self.model.add(Activation('tanh'))
-        self.model.add(Dropout(0.5))
-        self.model.add(Dense(64, init='uniform'))
-        self.model.add(Activation('tanh'))
-        self.model.add(Dropout(0.5))
+        for layer in range(self.dense_layers):
+            self.model.add(Dense(self.hidden_units,
+                                 input_dim=input_dim, init='uniform'))
+            self.model.add(Activation(self.activation))
+            self.model.add(Dropout(0.5))
         self.model.add(Dense(n_categories, init='uniform'))
         self.model.add(Activation('softmax'))
     
-        sgd = SGD(lr=0.1, decay=1e-6, momentum=0.9, nesterov=True)
+        #sgd = SGD(lr=0.1, decay=1e-6, momentum=0.9, nesterov=True)
         self.model.compile(loss='categorical_crossentropy',
                            optimizer='adam',
                            metrics=['accuracy'])         

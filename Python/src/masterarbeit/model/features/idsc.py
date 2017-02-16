@@ -7,6 +7,7 @@ from scipy.sparse.csgraph import floyd_warshall
 from masterarbeit.model.features.feature import UnsupervisedFeature
 from masterarbeit.model.features.codebook import (DictLearningCodebook, 
                                                   KMeansCodebook)
+import math
 distance = euclidean
 shortest_path = floyd_warshall
 
@@ -28,7 +29,7 @@ class IDSC(UnsupervisedFeature):
     columns = np.arange(n_angle_buckets).astype(np.str)
     n_levels = 1
     
-    def describe(self, binary, steps=None):
+    def _describe(self, binary, steps=None):
         if len(binary.shape) > 2:
             raise Exception('IDSC Features can only describe binary images')
         # maximum distance is the from upper left to lower right pixel,
@@ -38,8 +39,6 @@ class IDSC(UnsupervisedFeature):
                                                      self.n_contour_points)
         dist_matrix = self._build_distance_matrix(binary, contour_points)
         context = self._build_shape_context(dist_matrix, contour_points)        
-        # flatten the histograms        
-        self._v = context
         
         ### Visualisation ###
         
@@ -49,13 +48,18 @@ class IDSC(UnsupervisedFeature):
                 img = cv2.circle(img, tuple(p), 2, thickness=20, 
                                  color=(0, 255, 0))
             steps['picked points'] = img
+            
+        # flatten the histograms        
+        return context
         
     def _sample_contour_points(self, binary, n):
         im2, contours, hierarchy = cv2.findContours(binary.copy(), 
                                                     cv2.RETR_TREE, 
-                                                    cv2.CHAIN_APPROX_SIMPLE)
+                                                    cv2.CHAIN_APPROX_NONE)
+        if len(contours) == 0:
+            return None
         # there should be only one contour, if segmentation was correctly done
-        contour_points = contours[0]
+        contour_points = max(contours,key=len)
         # find contour points adds unnessecary dim., 
         # remove second dim of length 1
         contour_points = np.reshape(contour_points, (len(contour_points), 2))
@@ -144,45 +148,64 @@ class IDSCGaussians(IDSC):
     subclass this, no dictionary attached
     '''
     label = 'Gaussian Inner Distance Shape Context'
+    resolution = 2000000
     # gauss kernels, coarsest to finest, determines number of gauss levels
     gauss_kernels = [(501, 501), (101, 101), None]
     # points to take per level
-    n_contour_points = [40, 80, 300]
-    columns = np.arange(len(gauss_kernels)).astype(np.str)
+    n_contour_points = [40, 200, 400]
+    columns = np.arange(len(gauss_kernels))
     tau = 4
     n_levels = len(gauss_kernels)
     
-    def describe(self, binary, steps={}):
+    def _describe(self, binary, steps={}):
         if len(binary.shape) > 2:
             raise Exception('IDSC Features can only describe binary images')
         
-        max_distance = distance((0, 0), binary.shape)
+        resolution = binary.size
+        scale = math.sqrt(self.resolution / resolution)
+        new_shape = np.array(binary.shape) * scale
+        resized = cv2.resize(binary, tuple(new_shape.astype(np.int)))
+                
+        max_distance = distance((0, 0), binary.shape)        
+        
         n_levels = len(self.gauss_kernels)
-        level_contexts = []
+        level_contexts = []        
+        # alternative to gauss: polygon approximation?
+        #epsilon = 0.01 * cv2.arcLength(contour_points, True)
+        #approx = cv2.approxPolyDP(contour_points,epsilon,True)    
+        #appr_contour_points = approx.reshape(approx.shape[0], approx.shape[2])    
+        
         # grayscale image needed for thresholding gauss
         if binary.max() == 1:
             binary = binary.copy() * 255
         for i, gauss_kernel in enumerate(self.gauss_kernels):
             # starting with the coarsest level
             gauss_level = n_levels - i
-            gauss_filtered = binary
             # maximum distance decreases exponentially with increasing detail 
             self.max_distance = max_distance / np.power(4, 
                                                         n_levels - gauss_level)
             
             if gauss_kernel is not None:
-                gauss_filtered = cv2.GaussianBlur(gauss_filtered, 
-                                                  gauss_kernel, 0)
-                #gauss_filtered = np.clip(gauss_filtered, 0, 1)
-                ret, gauss_filtered = cv2.threshold(gauss_filtered, 50, 255, 
-                                                    cv2.THRESH_BINARY)
+                gaussian = cv2.GaussianBlur(binary, gauss_kernel, 0)
+                # cut off small blurred values (else shape would be blown up)
+                ret, thresh = cv2.threshold(gaussian, 20, 255, 
+                                            cv2.THRESH_BINARY)
                 
+                ## leaves with very thin structures may be 'blurred away', 
+                ## take more color information as shape
+                #if thresh.sum() == 0:
+                    #ret, thresh = cv2.threshold(gaussian, 10, 255, 
+                                                #cv2.THRESH_BINARY)                    
+                filtered = thresh
+            else:
+                filtered = binary
+          
             # individual contour points for each level (ToDo: take same points
             # on every level)  
             contour_points = self._sample_contour_points(
-                gauss_filtered, self.n_contour_points[i])
+                filtered, self.n_contour_points[i])
             
-            dist_matrix = self._build_distance_matrix(gauss_filtered,
+            dist_matrix = self._build_distance_matrix(filtered,
                                                       contour_points)   
             
             # get the shape context in max_distance (skip distant points)
@@ -194,7 +217,7 @@ class IDSCGaussians(IDSC):
                 
             if steps is not None:
                 thickness = int(20 / (i + 1))
-                img = cv2.cvtColor(gauss_filtered, cv2.COLOR_GRAY2BGR)
+                img = cv2.cvtColor(filtered, cv2.COLOR_GRAY2BGR)
                 for p in contour_points:
                     img = cv2.circle(img, tuple(p), 2, thickness=thickness, 
                                      color=(0, 255, 0))
@@ -207,7 +230,8 @@ class IDSCGaussians(IDSC):
                                  color=(255, 0, 0))                
                 steps['gauss level {}'.format(gauss_level)] = img
                 
-        self._v = level_contexts
+        return level_contexts
+        
         
 ### the callable classes with defined codebook types ###
     
@@ -235,3 +259,10 @@ class IDSCGaussiansDict(IDSCGaussians):
     histogram_length = 100
     codebook_type = DictLearningCodebook
     columns = np.arange(0, histogram_length).astype(np.str)
+    
+#class IDSCPolyKMeans(IDSCPoly):
+    #label = 'Polygon Inner Distance Shape Context'
+    #histogram_length = 100
+    #codebook_type = DictLearningCodebook
+    #columns = np.arange(0, histogram_length).astype(np.str)
+    

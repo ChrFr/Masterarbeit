@@ -1,5 +1,9 @@
+import numpy as np
+np.random.seed = 0
+PYTHONHASHSEED = 0
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
 from masterarbeit.model.features.idsc import IDSCDict, IDSCKMeans, IDSCGaussiansKMeans
+from masterarbeit.model.features.texture import LocalBinaryPattern, LocalBinaryPatternCenterPatch, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Leafvenation, Sift, SiftPatch, Surf, SurfPatch
 from masterarbeit.model.classifiers.mlp import ComplexMLP
 from masterarbeit.model.classifiers.svm import SVM
 from masterarbeit.model.features.moments import ZernikeMoments, HuMoments
@@ -11,7 +15,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
 import itertools
 import matplotlib.pyplot as plt
-import numpy as np
 
 def test_mlp(features, classifier):
     classifier.train(features) 
@@ -70,23 +73,119 @@ def validation_test(features, classifier):
     #y_pred = classifier._predict(np.array(X_test))
     real, predicted, accuracy = classifier.validate(features)
     print(accuracy)
-    conf = ConfusionMatrix(real, predicted)
-    conf.normalize()
-    conf.plot(title='Confusion matrix normalized')
+    #conf = ConfusionMatrix(real, predicted)
+    #conf.normalize()
+    #conf.plot(title='Confusion matrix normalized')
+    
+def join_features(features1, features2):
+    #assert len(features1) == len(features2)
+    from collections import defaultdict
+    d1 = defaultdict(list)
+    for feat in features1:
+        d1[feat.category].append(feat)
+    d2 = defaultdict(list)
+    for feat in features2:
+        d2[feat.category].append(feat)
+    
+    joined = [] 
+    for category in d1.keys():
+        l1 = d1[category]
+        l2 = d2[category]
+        sorted_l = sorted([l1, l2], key=len)
+        shortest = sorted_l[0]
+        for i in range(len(shortest)):
+            shortest[i]._v = np.append(shortest[i]._v, sorted_l[1][i]._v)
+            assert shortest[i].category == sorted_l[1][i].category
+            joined.append(shortest[i])
+    return joined
+
+def test_feat_types(feat_types, species, h5):
+    for feat_type in feat_types:
+        features = h5.get_features(feat_type, species) 
+        
+        classifier = ComplexMLP('IDSCDictTESTbatch') 
+        validation_test(features, classifier)    
+        classifier = SVM('IDSCDictTESTbatch')
+        validation_test(features, classifier)    
+        #test_mlp(features, mlp)    
+        
+def test_join(feat_types, species, h5):
+    joined = join_features(h5.get_features(feat_types[0], species), 
+                           h5.get_features(feat_types[1], species))
+    classifier = ComplexMLP('IDSCDictTESTbatch') 
+    validation_test(joined, classifier)     
+    classifier = SVM('IDSCDictTESTbatch')
+    validation_test(joined, classifier)     
+    
+def test_mlp_def(feat_type, h5):
+    features = h5.get_features(feat_type, species) 
+    
+    #for hidden_units in [32, 64, 128]:
+        #classifier = ComplexMLP('IDSCDictTESTbatch')
+        #classifier.hidden_units = hidden_units
+        #validation_test(features, classifier) 
+        
+    #for dense_layers in range(0, 5):
+        #classifier = ComplexMLP('IDSCDictTESTbatch')
+        #classifier.dense_layers = dense_layers
+        #validation_test(features, classifier) 
+        
+    for activation in ['sigmoid', 'hard_sigmoid', 'relu', 'tanh', 'softplus', 'softsign', 'linear']:
+        print(activation)
+        classifier = ComplexMLP('IDSCDictTESTbatch')
+        classifier.activation = activation
+        validation_test(features, classifier) 
+        
     
 if __name__ == '__main__':
     h5 = HDF5Pandas()
-    h5.open('../../hdf5_test.h5')     
-    #features = h5.get_features(IDSCDict)      
-    #features = h5.get_features(ZernikeMoments)  
-    #features = h5.get_features(IDSCKMeans) 
-    features = h5.get_features(IDSCGaussiansKMeans) 
-
-    classifier = ComplexMLP('IDSCDictTESTbatch') 
-    #classifier = SVM('IDSCDictTESTbatch')
+    #h5.open('../../hdf5_test.h5') 
+    #h5.open('../../contour_test.h5')  
+    h5.open('../../test_gabor.h5')    
+    species = None#['1 - Klarapfel', '2 - roter Boskop', '7 - Apfelquitte']
+    feat_types = [IDSCGaussiansKMeans, LocalBinaryPattern, LocalBinaryPatternCenterPatch, LocalBinaryPatternPatches] #IDSCGaussiansKMeans, IDSCDict, ZernikeMoments, IDSCKMeans, LocalBinaryPatternPatch
     
+    ComplexMLP.verbose = 0    
+    #test_feat_types([GaborFilterBankCenterPatch], species, h5)    
+    #test_feat_types([GaborFilterBankCenterPatch], species, h5)   
+    #test_feat_types([GaborFilterBankCenterPatch], species, h5)   
+    #test_mlp_def(feat_types[0], species, h5)
+    #print('joined')
+    #test_join([IDSCGaussiansKMeans, LocalBinaryPattern], species, h5)
+    #test_join([IDSCGaussiansKMeans, LocalBinaryPattern], species, h5)
+    #test_join([IDSCGaussiansKMeans, LocalBinaryPattern], species, h5)
+    #test_join([IDSCGaussiansKMeans, LocalBinaryPatternCenterPatch], species, h5)
+    #test_join([IDSCGaussiansKMeans, LocalBinaryPatternCenterPatch], species, h5)
+    #test_join([IDSCGaussiansKMeans, LocalBinaryPatternCenterPatch], species, h5)
     
-    #test_mlp(features, mlp)
-    validation_test(features, classifier)
-
+    ComplexMLP.epoch = 2000      
+    #test_feat_types([Haralick], species, h5)   
+    #test_feat_types([LocalBinaryPatternCenterPatch], species, h5)   
+    #test_feat_types([LocalBinaryPatternPatches], species, h5)  
+    #print('-' * 10)
+    #test_feat_types([Sift], species, h5)
+    #print('-' * 10) 
+    #test_feat_types([SiftPatch], species, h5)    
+    #print('-' * 10)
+    #test_feat_types([Surf], species, h5)     
+    #print('-' * 10)
+    #test_feat_types([SurfPatch], species, h5)  
+    
+    print('-' * 10)
+    test_join([Surf, GaborFilterBankPatches], species, h5)
+    print('-' * 10)
+    test_join([Sift, GaborFilterBankPatches], species, h5)
+    print('-' * 10)
+    test_join([Surf, Leafvenation], species, h5)
+    print('-' * 10)
+    test_join([Sift, Leafvenation], species, h5)
+    
+    #test_join([IDSCGaussiansKMeans, GaborFilterBank], species, h5)
+    #test_join([IDSCGaussiansKMeans, GaborFilterBank], species, h5)
+    #test_join(feat_types, species, h5)
+    #print('gauss')
+    #test_feat_types([feat_types[1]], species, h5)
+    #test_feat_types([feat_types[1]], species, h5)
+    #test_feat_types([feat_types[1]], species, h5)
+    
     h5.close()   

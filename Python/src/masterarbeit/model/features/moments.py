@@ -8,7 +8,7 @@ class HuMoments(Feature):
     label = 'Hu-Moments'
     columns = list(np.arange(7))
     
-    def describe(self, binary, steps=None):
+    def _describe(self, binary, steps=None):
         clipped = binary.clip(max=1)
         m = measure.moments(clipped)
         cr = m[0, 1] / m[0, 0]
@@ -22,7 +22,7 @@ class ZernikeMoments(Feature):
     label = 'Zernike-Moments'
     columns = list(np.arange(25))
     
-    def describe(self, binary, steps=None):
+    def _describe(self, binary, steps=None):
         shape = list(binary.shape) + [3]
         kernel = np.ones((40,40),np.uint8)
         closed = cv2.morphologyEx(binary, cv2.MORPH_CLOSE, kernel)

@@ -2,6 +2,7 @@ import numpy as np
 import os
 import cv2
 from scipy import ndimage as ndi
+import math
 
 from masterarbeit.model.segmentation.segmentation import Segmentation
 from skimage.morphology import remove_small_objects   
@@ -32,60 +33,22 @@ class Binarize(OpenCVSegmentation):
     label = 'Binarize image with Otsu-Thresholding (OpenCV)'    
     
     
-    def process(self, image, steps=None):
-        grey = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        ret, binary = cv2.threshold(grey, 220, 255, 
+    def process(self, image, steps=None):        
+        if len(image.shape) == 3:
+            image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY)        
+        ret, binary = cv2.threshold(image, 220, 255, 
                                     cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)     
         return binary
     
-class SegmentVeinsGabor(OpenCVSegmentation):   
-    label = 'Segment leaf veins with Gabor (OpenCV)'    
-     
-    def gabor(self, image):
-    
-        def build_filters():
-            filters = []
-            ksize = 31
-            for theta in np.arange(0, np.pi, np.pi / 16):
-                kern = cv2.getGaborKernel((ksize, ksize), 4.0, theta, 10.0, 0.5, 0, ktype=cv2.CV_32F)
-                kern /= 1.5*kern.sum()
-                filters.append(kern)
-            return filters
-    
-        def process(img, filters):
-            accum = np.zeros_like(img)
-            for kern in filters:
-                fimg = cv2.filter2D(img, cv2.CV_8UC3, kern)
-                np.maximum(accum, fimg, accum)
-            return accum        
-    
-        filters = build_filters()
-    
-        res1 = process(image, filters)
-    
-        return res1     
-       
-    def process(self, image, steps=None):
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)    
-        gabor = self.gabor(gray)        
-        lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
-        lines = lsd.detect(gabor)
-        line_img = lsd.drawSegments(np.empty(gray.shape), lines[0])
-        #masked_source = self._mask(image)
-        if steps is not None:
-            steps['gabor'] = gabor
-            steps['lines'] = line_img
-            #steps['masked source'] = masked_source    
-        #cropped = scale_to_bounding_box(binary.copy(), masked_source)
-        return gabor    
     
 class KMeansBinarize(Segmentation):
     label = 'clustered k-means Binarization (OpenCV)'     
-    process_width = 2000
+    resolution = 2000000
     def process(self, image, steps=None):
-        res_factor = self.process_width / image.shape[1]
-        new_shape = (int(image.shape[0] * res_factor), int(image.shape[1] * res_factor))
-        resized = cv2.resize(image, new_shape)
+        resolution = image.shape[0] * image.shape[1]
+        scale = math.sqrt(self.resolution / resolution)
+        new_shape = (np.array(image.shape[:2]) * scale).astype(np.int)
+        resized = cv2.resize(image,  (new_shape[1], new_shape[0]))
         
         reshaped_img = resized.reshape((-1,3)).astype(np.float32)
         criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_MAX_ITER, 1, 10)
@@ -99,10 +62,9 @@ class KMeansBinarize(Segmentation):
             res2 = res.reshape((resized.shape))
             steps['clustered colors'] = res2               
                         
-        width = resized.shape[0]
-        height = resized.shape[1]
+        height, width = resized.shape[:2]
         labels_reshaped = label.reshape(
-            (width, height)).astype(np.float32)      
+            (height, width)).astype(np.float32)      
         
         # sometimes are in different order as expected
         # label 0 is supposed to be our background
@@ -126,9 +88,9 @@ class KMeansBinarize(Segmentation):
         
         rem = remove_small_objects(closed.astype(bool), min_size=5000)
         rem = rem.astype(np.uint8)
-        o_size_binary = cv2.resize(rem, (image.shape[1], image.shape[0]))
+        o_sized = cv2.resize(rem, (image.shape[1], image.shape[0]))
         
-        return o_size_binary.astype(np.uint8)
+        return o_sized.astype(np.uint8)
     
 class KMeansHSVBinarize(KMeansBinarize):
     label = 'clustered k-means Binarization in HSV space (OpenCV)'    

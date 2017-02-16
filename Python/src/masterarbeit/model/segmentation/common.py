@@ -21,8 +21,8 @@ def remove_thin_objects(binary):
     rem = rem.astype(np.uint8)
     
     # combine more detailed binary with 'blown up' binary   
-    rem_resized = cv2.resize(rem, (binary.shape[1], binary.shape[0]))
     masked_binary = mask(binary, rem_resized)           
+    rem_resized = cv2.resize(rem, (binary.shape[1], binary.shape[0]))
     return masked_binary    
     
 def mask(image, binary):
@@ -67,6 +67,9 @@ def read_image(filename):
 
 def write_image(image, filename):
     pixels = image.copy()
-    cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR, pixels)
+    try:
+        cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR, pixels)
+    except:
+        pass
     success = cv2.imwrite(filename, pixels)
     return success

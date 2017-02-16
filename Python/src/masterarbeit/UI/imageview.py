@@ -50,9 +50,10 @@ class ImageViewer():
         # (though it could be handled same way as normal numpy array)
         if type(pixel_array) == np.ndarray:
             pixel_array = np.array(pixel_array)
-            
-        q_image = QtGui.QImage(pixel_array, width, height, byte_value, imformat)        
-        self.pixmap = QtGui.QPixmap(q_image)
+        self.pixel_array = pixel_array    
+        self.q_image = QtGui.QImage(self.pixel_array, width, height, 
+                                    byte_value, imformat)        
+        self.pixmap = QtGui.QPixmap.fromImage(self.q_image)
         self.zoom()       
 
     def zoom(self, factor=None):

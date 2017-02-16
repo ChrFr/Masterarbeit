@@ -4,7 +4,7 @@ from abc import abstractmethod
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
 # a seed for replicability of tests
-seed = 0
+seed = 5
 
 class Classifier(metaclass=ABCMeta):       
     label = 'None'
@@ -55,6 +55,8 @@ class Classifier(metaclass=ABCMeta):
         pass
     
     def predict(self, features):        
+        if feat._v is None:
+            return None
         #if feat_type not in self.trained_feature_types
         values = np.array([feat.values for feat in features])    
         classes = self._predict(values)
@@ -69,8 +71,10 @@ class Classifier(metaclass=ABCMeta):
         categories, values = zip(*[(f.category, f.values) for f in features])
         unique_cat, classes = np.unique(categories, return_inverse=True)
         n_classes = len(unique_cat)
+        test_size = 0.33
         (training_values, test_values, 
          training_classes, test_classes) = train_test_split(values, classes, 
+                                                            test_size=test_size,
                                                             random_state=seed)
         self._train(np.array(training_values), training_classes, n_classes)
         predicted_classes = self._predict(np.array(test_values))

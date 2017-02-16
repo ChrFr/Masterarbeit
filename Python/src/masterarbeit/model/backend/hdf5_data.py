@@ -69,24 +69,29 @@ class HDF5Pandas(Data):
         return len(df.index)        
     
     def add_feature(self, category, feature): 
-        self.add_features(category, [feature])   
+        self._add_features_to_category([feature], category)   
                 
     def add_category(self, category):
         self.store.createGroup(self.category_root, category)
         
-    def add_features(self, features, replace=False):
+    def add_features(self, features, category=None, replace=False):
         features = np.array(features)
+        if category is not None:
+            self._add_features_to_category(features, category, 
+                                           replace=replace)
+            return
         categories = np.array([f.category for f in features])
         unique_cat = np.unique(categories)
         for category in unique_cat:
             idx = categories == category
-            self._add_features(features[idx], category, replace=replace)        
+            self._add_features_to_category(features[idx], category, 
+                                           replace=replace)        
         
-    def _add_features(self, features, category, replace=False):        
+    def _add_features_to_category(self, features, category, replace=False):        
         now = datetime.datetime.now().strftime(DATETIME_FORMAT)    
         feat_types = np.array([type(f).__name__ for f in features])  
         unique_feat = np.unique(feat_types)
-        for feat_type in feat_types:  
+        for feat_type in unique_feat:  
             table_path = self.feature_path.format(
                 category=category, feature=feat_type)  
             if replace and self.root + table_path in self.store.keys():                
@@ -97,7 +102,7 @@ class HDF5Pandas(Data):
                 columns = feature.columns  
                 df = pd.DataFrame([feature.values], columns=columns)
                 df[self.date_column] = now        
-                self.store.append(table_path, df) 
+                self.store.append(table_path, df)              
         self.commit()
         
     def delete_category(self, category):
@@ -112,8 +117,6 @@ class HDF5Pandas(Data):
         for path in self.store.keys():
             if path.endswith('/' + feature_type.__name__):
                 del self.store[path]
-        code_path = self.codebook_path.format(feature=feature_type.__name__)  
-        del self.store[code_path]
         
     def commit(self):
         self.store.flush(fsync=True)
@@ -272,7 +275,8 @@ class HDF5Pandas(Data):
         store.close() 
                 
     def save_codebook(self, codebook, feature_type):
-        table_path = self.codebook_path.format(feature=feature_type.__name__)         
+        table_path = self.codebook_path.format(feature=feature_type.__name__)  
+        # ToDo: store seperately, because this may cause mixin objects
         self.store[table_path] = pd.DataFrame(codebook.serialize())
         self.commit()
         

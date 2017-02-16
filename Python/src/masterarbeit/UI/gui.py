@@ -1,8 +1,7 @@
 from PyQt5 import Qt, QtCore
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QDialog, 
                              QListWidgetItem, QCheckBox,
-                             QTableWidgetItem, QMessageBox,
-                             QInputDialog)
+                             QTableWidgetItem, QInputDialog, QMessageBox)
 import sys
 from collections import OrderedDict
 import numpy as np
@@ -10,6 +9,9 @@ import cv2
 import os
 import json
 from collections import OrderedDict
+import matplotlib
+#matplotlib.use('agg')
+from matplotlib import pyplot as plt
 
 from masterarbeit.UI.main_window_ui import Ui_MainWindow
 from masterarbeit.config import Config
@@ -263,8 +265,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             binary = segmentation.process(image)
             for feat_type in feats_used:
                 feature = feat_type('')
-                feature.describe(binary)
-                if isinstance(feature, UnsupervisedFeature):
+                success = feature.describe(binary)
+                if not success:
+                    print('failure while extracting features from {}'.format(file))
+                elif isinstance(feature, UnsupervisedFeature):
                     feature.histogram(codebook)
                 features.append(feature)
         predictions = self.pred_classifier.predict(features)
@@ -467,7 +471,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             if self.remove_thin_check.isChecked():
                 result = remove_thin_objects(result)
             if self.mask_check.isChecked():
-                result = mask(self.source_pixels, result)
+                masked = mask(self.source_pixels, result)
+                result = crop(masked, border=50)                   
                 result[result == 0] = 255
             steps['result'] = result
             for name, pixels in steps.items():
@@ -505,39 +510,38 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                                    #steps=steps),                           
                                   #parent=self)                                  
         
-        def update_features():
-            for name, pixels in steps.items():
-                self.feature_steps_combo.addItem(name, pixels)            
+        def update_features():           
             self.feature_steps_combo.setCurrentIndex(
                 self.feature_steps_combo.count() - 1)
             self.extracted_feature = feature
             self.feature_ouptut.setText(str(feature.values))
-            import matplotlib.pyplot as plt
-            #columns = feature.columns
-            #x_pos = np.arange(len(columns))
             
-            #plt.bar(x_pos, feature.values, align='center')
-            #plt.xticks(x_pos, columns)
-            #plt.xlabel('Usage')
-            #plt.title('Programming language usage')
-            fig = plt.figure()
-            
-            width = .35
-            ind = np.arange(len(feature.values))
-            plt.bar(ind, feature.values, width=width)
-            plt.xticks(ind + width / 2, feature.columns)
-            
-            fig.autofmt_xdate()            
-            plt.show()
-                      
+            for name, pixels in steps.items():
+                self.feature_steps_combo.addItem(name, pixels)                       
         
         feature.describe(self.preprocessed_pixels, steps=steps) 
         if isinstance(feature, UnsupervisedFeature):
             codebook = self.store.get_codebook(type(feature))
             if codebook is None:
-                error_message('Codebook needed but not built yet!', parent=self)
-                return
+                error_message('Codebook needed but not built yet!', parent=self)                
+                update_features()
+                return                
             feature.histogram(codebook)
+            
+        fig = plt.figure(dpi=200)            
+        width = .35
+        ind = np.arange(len(feature.values))                
+        plt.bar(ind, feature.values, width=width)
+        columns = feature.columns
+        if columns is None:
+            columns = np.arange(0, len(feature.values))
+        plt.xticks(ind + width / 2, columns)
+        fig.autofmt_xdate()                     
+        fig.canvas.draw()
+        plot_str = fig.canvas.tostring_rgb()
+        data = np.fromstring(plot_str, dtype=np.uint8, sep='')
+        data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,)) 
+        steps['values'] = data   
         update_features()
 
     def reset_processed_views(self):

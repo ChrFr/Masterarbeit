@@ -1,18 +1,27 @@
 import numpy as np
 from abc import ABCMeta
 from abc import abstractmethod
+import math
+import cv2
 
 class Feature(metaclass=ABCMeta):   
     label = 'None'    
-    columns = []      
+    columns = None      
+    binary_input = True
+    common_resolution = 2000000
     
     def __init__(self, category):
         self._v = None
         self.category = category
-    
-    def __len__(self):
-        return len(self.columns)
-    
+        
+    def _common_scale(self, image):
+        resolution = image.shape[0] * image.shape[1]
+        scale = math.sqrt(self.common_resolution / resolution)        
+        new_shape = (np.array(image.shape[:2]) * scale).astype(np.int)
+        # cv2 swaps width with height
+        scaled = cv2.resize(image, (new_shape[1], new_shape[0]))
+        return scaled
+        
     @property    
     def values(self):
         if self._v is None:
@@ -21,16 +30,22 @@ class Feature(metaclass=ABCMeta):
     
     @values.setter    
     def values(self, values):
-        values = values.flatten()
-        if len(values) != len(self):
+        values = values.flatten()        
+        if self.columns is not None and len(values) != len(self.columns):
             raise Exception('expected length of feature mismatches ' +
                             'length of extracted values! ({}!={})'.format(
-                                len(self), len(values)
+                                len(self.columns), len(values)
                             ))
         self._v = values
         
+    def describe(self, image, steps=None):
+        self._v = self._describe(image, steps=steps)
+        if self._v is None:
+            return False
+        return True
+    
     @abstractmethod
-    def describe(self, image, steps={}):
+    def _describe(self, image, steps={}):
         pass
     
 class UnsupervisedFeature(Feature):

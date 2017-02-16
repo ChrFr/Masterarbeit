@@ -186,6 +186,13 @@
      </item>
     </layout>
    </item>
+   <item row="0" column="0">
+    <widget class="QLabel" name="label_2">
+     <property name="text">
+      <string>Advice: Use already segmented images only!</string>
+     </property>
+    </widget>
+   </item>
   </layout>
  </widget>
  <resources/>

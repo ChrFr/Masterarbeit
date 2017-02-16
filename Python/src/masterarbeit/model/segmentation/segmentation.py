@@ -1,12 +1,10 @@
-class Segmentation():
+from abc import ABCMeta
+from abc import abstractmethod
+
+class Segmentation(metaclass=ABCMeta):  
     
     label = 'None'    
-     
-    def read(self, path):
-        return np.zeros((1024, 768))
-           
-    def write(self, path):
-        return False
          
+    @abstractmethod
     def process(self, image, steps=None):
-        return np.zeros((1024, 768))
+        return
