@@ -56,7 +56,6 @@ def crop(image, border=0):
     y2 = min(y2 + border, image.shape[0])
     cropped = image[y1: y2, x1: x2]
     # background white rather than black
-    # (else problems with later repeated binarization)
     image[image==0] = 255
     return cropped
 

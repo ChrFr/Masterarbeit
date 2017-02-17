@@ -339,17 +339,17 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             
         feature_type = feature_types[0]
         max_dim = None
-        if len(feature_type.columns) > 7:            
-            msg = QMessageBox(parent=self)
-            msg.setWindowTitle('Warning')
-            msg.setIcon(QMessageBox.Warning)
-            msg.setText('The selected feature has a very high dimension!')    
-            msg.setInformativeText(
-                'Should the plot be split into plots with smaller dimensions?') 
-            msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
-            retval = msg.exec_()
-            if retval == QMessageBox.Yes:
-                max_dim = 6   
+        #if len(feature_type.columns) > 7:            
+            #msg = QMessageBox(parent=self)
+            #msg.setWindowTitle('Warning')
+            #msg.setIcon(QMessageBox.Warning)
+            #msg.setText('The selected feature has a very high dimension!')    
+            #msg.setInformativeText(
+                #'Should the plot be split into plots with smaller dimensions?') 
+            #msg.setStandardButtons(QMessageBox.Yes | QMessageBox.No)
+            #retval = msg.exec_()
+            #if retval == QMessageBox.Yes:
+                #max_dim = 6   
                                 
         features = self.store.get_features(feature_type, categories=species) 
         from matplotlib import pyplot as plt

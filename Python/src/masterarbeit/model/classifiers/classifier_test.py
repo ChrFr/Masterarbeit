@@ -1,9 +1,10 @@
 import numpy as np
-np.random.seed = 0
-PYTHONHASHSEED = 0
+seed = 0
+np.random.seed = seed
+PYTHONHASHSEED = seed
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
 from masterarbeit.model.features.idsc import IDSCDict, IDSCKMeans, IDSCGaussiansKMeans
-from masterarbeit.model.features.texture import LocalBinaryPattern, LocalBinaryPatternCenterPatch, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Leafvenation, Sift, SiftPatch, Surf, SurfPatch
+from masterarbeit.model.features.texture import LocalBinaryPattern, LocalBinaryPatternCenterPatch, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Leafvenation, Sift, SiftPatch, Surf, SurfPatch, Orientation
 from masterarbeit.model.classifiers.mlp import ComplexMLP
 from masterarbeit.model.classifiers.svm import SVM
 from masterarbeit.model.features.moments import ZernikeMoments, HuMoments
@@ -13,7 +14,6 @@ from masterarbeit.model.classifiers.metrics import ConfusionMatrix
 from sklearn import svm
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
-import itertools
 import matplotlib.pyplot as plt
 
 def test_mlp(features, classifier):
@@ -77,45 +77,22 @@ def validation_test(features, classifier):
     #conf.normalize()
     #conf.plot(title='Confusion matrix normalized')
     
-def join_features(features1, features2):
-    #assert len(features1) == len(features2)
-    from collections import defaultdict
-    d1 = defaultdict(list)
-    for feat in features1:
-        d1[feat.category].append(feat)
-    d2 = defaultdict(list)
-    for feat in features2:
-        d2[feat.category].append(feat)
-    
-    joined = [] 
-    for category in d1.keys():
-        l1 = d1[category]
-        l2 = d2[category]
-        sorted_l = sorted([l1, l2], key=len)
-        shortest = sorted_l[0]
-        for i in range(len(shortest)):
-            shortest[i]._v = np.append(shortest[i]._v, sorted_l[1][i]._v)
-            assert shortest[i].category == sorted_l[1][i].category
-            joined.append(shortest[i])
-    return joined
-
 def test_feat_types(feat_types, species, h5):
     for feat_type in feat_types:
         features = h5.get_features(feat_type, species) 
         
-        classifier = ComplexMLP('IDSCDictTESTbatch') 
-        validation_test(features, classifier)    
-        classifier = SVM('IDSCDictTESTbatch')
+        #classifier = ComplexMLP('IDSCDictTESTbatch') 
+        #validation_test(features, classifier)    
+        classifier = SVM('IDSCDictTESTbatch', seed=0)
         validation_test(features, classifier)    
         #test_mlp(features, mlp)    
         
 def test_join(feat_types, species, h5):
-    joined = join_features(h5.get_features(feat_types[0], species), 
-                           h5.get_features(feat_types[1], species))
+    joined = h5.get_joined_features(feat_types, species)
     classifier = ComplexMLP('IDSCDictTESTbatch') 
     validation_test(joined, classifier)     
-    classifier = SVM('IDSCDictTESTbatch')
-    validation_test(joined, classifier)     
+    classifier = SVM('IDSCDictTESTbatch', seed=0)
+    validation_test(joined, classifier)
     
 def test_mlp_def(feat_type, h5):
     features = h5.get_features(feat_type, species) 
@@ -141,12 +118,12 @@ if __name__ == '__main__':
     h5 = HDF5Pandas()
     #h5.open('../../hdf5_test.h5') 
     #h5.open('../../contour_test.h5')  
-    h5.open('../../test_gabor.h5')    
+    h5.open('../../test_with_id.h5')    
     species = None#['1 - Klarapfel', '2 - roter Boskop', '7 - Apfelquitte']
     feat_types = [IDSCGaussiansKMeans, LocalBinaryPattern, LocalBinaryPatternCenterPatch, LocalBinaryPatternPatches] #IDSCGaussiansKMeans, IDSCDict, ZernikeMoments, IDSCKMeans, LocalBinaryPatternPatch
     
     ComplexMLP.verbose = 0    
-    #test_feat_types([GaborFilterBankCenterPatch], species, h5)    
+    test_feat_types([GaborFilterBankCenterPatch], species, h5)    
     #test_feat_types([GaborFilterBankCenterPatch], species, h5)   
     #test_feat_types([GaborFilterBankCenterPatch], species, h5)   
     #test_mlp_def(feat_types[0], species, h5)
@@ -158,11 +135,51 @@ if __name__ == '__main__':
     #test_join([IDSCGaussiansKMeans, LocalBinaryPatternCenterPatch], species, h5)
     #test_join([IDSCGaussiansKMeans, LocalBinaryPatternCenterPatch], species, h5)
     
-    ComplexMLP.epoch = 2000      
-    #test_feat_types([Haralick], species, h5)   
+    ComplexMLP.epoch = 2000  
+    #print('-' * 10)  
+    #test_feat_types([IDSCGaussiansKMeans], species, h5)  
+    #print('-' * 10)  
+    #test_feat_types([Surf], species, h5)  
+    #print('-' * 10)
+    #test_join([IDSCGaussiansKMeans, GaborFilterBankPatches], species, h5)
+    print('-' * 10)
+    test_join([IDSCGaussiansKMeans, GaborFilterBankPatches], species, h5)
+    test_join([IDSCGaussiansKMeans, GaborFilterBankPatches], species, h5)
+    test_join([IDSCGaussiansKMeans, GaborFilterBankPatches], species, h5)
+    print('-' * 10)
+    test_join([IDSCGaussiansKMeans, Surf, GaborFilterBankPatches], species, h5)
+    test_join([IDSCGaussiansKMeans, Surf, GaborFilterBankPatches], species, h5)
+    test_join([IDSCGaussiansKMeans, Surf, GaborFilterBankPatches], species, h5)
+    print('-' * 10)
+    test_join([IDSCGaussiansKMeans, Surf, Sift, GaborFilterBankPatches], species, h5)
+    test_join([IDSCGaussiansKMeans, Surf, Sift, GaborFilterBankPatches], species, h5)
+    test_join([IDSCGaussiansKMeans, Surf, Sift, GaborFilterBankPatches], species, h5)
+    #test_feat_types([Surf], species, h5)  
+    #print('-' * 10)
+    #test_feat_types([Sift], species, h5)  
+    #print('-' * 10)
+    #test_feat_types([IDSCGaussiansKMeans], species, h5)  
+    #print('-' * 10)
+    #test_join([IDSCGaussiansKMeans, Surf], species, h5)
+    #print('-' * 10)
+    #test_join([IDSCGaussiansKMeans, Sift], species, h5)
+    #print('-' * 10)
+    #test_join([IDSCGaussiansKMeans, GaborFilterBankPatches], species, h5)
+    #print('-' * 10)
+    #test_join([GaborFilterBankPatches, Surf], species, h5)
+    #print('-' * 10)
+    #test_join([GaborFilterBankPatches, Sift], species, h5)
+    #print('-' * 10)
+    #test_join([Leafvenation, LocalBinaryPatternPatches, GaborFilterBankPatches], species, h5)
+    #print('-' * 10)
+    #test_join([IDSCGaussiansKMeans, Leafvenation, LocalBinaryPatternPatches], species, h5)
+    #print('-' * 10)
+    #test_join([IDSCGaussiansKMeans, Leafvenation, LocalBinaryPatternPatches, GaborFilterBankPatches], species, h5)
+    #test_feat_types([Leafvenation], species, h5)   
     #test_feat_types([LocalBinaryPatternCenterPatch], species, h5)   
     #test_feat_types([LocalBinaryPatternPatches], species, h5)  
     #print('-' * 10)
+    #test_feat_types([Sift], species, h5)
     #test_feat_types([Sift], species, h5)
     #print('-' * 10) 
     #test_feat_types([SiftPatch], species, h5)    
@@ -171,14 +188,19 @@ if __name__ == '__main__':
     #print('-' * 10)
     #test_feat_types([SurfPatch], species, h5)  
     
-    print('-' * 10)
-    test_join([Surf, GaborFilterBankPatches], species, h5)
-    print('-' * 10)
-    test_join([Sift, GaborFilterBankPatches], species, h5)
-    print('-' * 10)
-    test_join([Surf, Leafvenation], species, h5)
-    print('-' * 10)
-    test_join([Sift, Leafvenation], species, h5)
+    #print('-' * 10)
+    #test_join([Surf, LocalBinaryPatternPatches], species, h5)
+    #print('-' * 10)
+    #test_join([IDSCGaussiansKMeans, Leafvenation], species, h5)    
+    #print('-' * 10)
+    #test_join([IDSCGaussiansKMeans, GaborFilterBankPatches], species, h5)
+    #print('-' * 10)
+    #test_join([IDSCGaussiansKMeans, GaborFilterBankPatches], species, h5)
+
+    #print('-' * 10)
+    #test_join([Surf, Leafvenation], species, h5)
+    #print('-' * 10)
+    #test_join([Sift, Leafvenation], species, h5)
     
     #test_join([IDSCGaussiansKMeans, GaborFilterBank], species, h5)
     #test_join([IDSCGaussiansKMeans, GaborFilterBank], species, h5)

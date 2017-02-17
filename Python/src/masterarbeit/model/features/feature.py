@@ -3,14 +3,18 @@ from abc import ABCMeta
 from abc import abstractmethod
 import math
 import cv2
+import uuid
 
 class Feature(metaclass=ABCMeta):   
-    label = 'None'    
+    label = 'None'
     columns = None      
     binary_input = True
     common_resolution = 2000000
     
-    def __init__(self, category):
+    def __init__(self, category, id=None):
+        if id is None:
+            id = str(uuid.uuid4())
+        self.id = id
         self._v = None
         self.category = category
         
@@ -45,8 +49,9 @@ class Feature(metaclass=ABCMeta):
         return True
     
     @abstractmethod
-    def _describe(self, image, steps={}):
+    def _describe(self, image, steps=None):
         pass
+    
     
 class UnsupervisedFeature(Feature):
     n_levels = 1
@@ -59,8 +64,8 @@ class UnsupervisedFeature(Feature):
                                      n_levels=cls.n_levels)
         return codebook
         
-    def __init__(self, category):
-        super(UnsupervisedFeature, self).__init__(category)
+    def __init__(self, category, id=None):
+        super(UnsupervisedFeature, self).__init__(category, id=id)
         
     def histogram(self, codebook):
         if not isinstance(codebook, self.codebook_type):
@@ -68,3 +73,19 @@ class UnsupervisedFeature(Feature):
                             .format(self.codebook_type.__name__))
         self._v = codebook.histogram(self.values) 
                 
+
+class JoinedFeature(Feature):
+    label = 'Joined Feature'
+    
+    def __init__(self, category, id=None):
+        super(JoinedFeature, self).__init__(category, id=id)
+        self._v = np.empty(0)
+    
+    def add(self, values):
+        self._v = np.concatenate((self._v, values))
+        
+    def describe(self, image, steps=None):
+        pass    
+    
+    def _describe(self, image, steps=None):
+        pass    

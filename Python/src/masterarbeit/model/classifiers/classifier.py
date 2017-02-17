@@ -3,13 +3,12 @@ from abc import ABCMeta
 from abc import abstractmethod
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-# a seed for replicability of tests
-seed = 5
 
 class Classifier(metaclass=ABCMeta):       
     label = 'None'
     
-    def __init__(self, name):
+    def __init__(self, name, seed=None):
+        self.seed = seed
         self.name = name
         self.model = None
         self.trained_features = []
@@ -72,11 +71,12 @@ class Classifier(metaclass=ABCMeta):
         unique_cat, classes = np.unique(categories, return_inverse=True)
         n_classes = len(unique_cat)
         test_size = 0.33
+        
         (training_values, test_values, 
-         training_classes, test_classes) = train_test_split(values, classes, 
-                                                            test_size=test_size,
-                                                            random_state=seed)
-        self._train(np.array(training_values), training_classes, n_classes)
+         training_classes, test_classes) = train_test_split(
+             values, classes, test_size=test_size, random_state=self.seed)
+        
+        self._train(np.array(training_values), training_classes, n_classes)        
         predicted_classes = self._predict(np.array(test_values))
         real_cat = unique_cat[test_classes]
         predicted_cat = unique_cat[predicted_classes]  

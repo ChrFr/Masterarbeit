@@ -16,7 +16,7 @@ class HuMoments(Feature):
         central = measure.moments_central(clipped, cr, cc)
         normalized = measure.moments_normalized(central)
         moments = measure.moments_hu(normalized)
-        self.values = moments
+        return moments 
 
 class ZernikeMoments(Feature):
     label = 'Zernike-Moments'
@@ -31,7 +31,7 @@ class ZernikeMoments(Feature):
                                     cv2.CHAIN_APPROX_SIMPLE)
         # no contours if binary is empty
         if len(contours) == 0:
-            self.values = np.zeros(len(self))
+            self.values = np.zeros(len(self.columns))
             return
         # compute moments around center of binary
         center, radius = cv2.minEnclosingCircle(contours[0])
@@ -41,6 +41,13 @@ class ZernikeMoments(Feature):
             cont_img = np.zeros((binary.shape[0], binary.shape[1], 3))
             cv2.drawContours(cont_img, contours, 0, (0, 255, 0), 3)
             steps['contour'] = cont_img
-        self.values = moments 
+        return moments 
+        
+class Chebyshev(Feature):
+    label ='Chebyshev-Moments'
+    
+    def _describe(self, binary, steps=None):
+        from scipy.integrate import quad
+        pass
     
     

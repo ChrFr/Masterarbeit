@@ -15,6 +15,7 @@ import pickle
 
 from masterarbeit.model.backend.data import (Data, class_to_string, 
                                              load_class)
+from masterarbeit.model.features.feature import JoinedFeature
 
 DATETIME_FORMAT = "%H:%M:%S %d.%m.%y"
 
@@ -66,6 +67,8 @@ class HDF5Pandas(Data):
         if path not in self.store:
             return 0
         df = self.store[path]
+        if df is None:
+            return 0
         return len(df.index)        
     
     def add_feature(self, category, feature): 
@@ -94,15 +97,31 @@ class HDF5Pandas(Data):
         for feat_type in unique_feat:  
             table_path = self.feature_path.format(
                 category=category, feature=feat_type)  
-            if replace and self.root + table_path in self.store.keys():                
-                del(self.store[table_path])        
             idx = feat_types == feat_type   
             features_per_type = features[idx]
+            feature_frame = None
+            if not replace:
+                try:
+                    feature_frame = self.store[table_path]
+                except: pass
             for feature in features_per_type:
-                columns = feature.columns  
-                df = pd.DataFrame([feature.values], columns=columns)
-                df[self.date_column] = now        
-                self.store.append(table_path, df)              
+                values = feature.values
+                columns = feature.columns
+                if columns is None:
+                    columns = np.arange(0, len(values))                    
+                df = pd.DataFrame([values], columns=columns)
+                df[self.date_column] = now   
+                df['id'] = feature.id
+                df = df.set_index('id')
+                if feature_frame is None:
+                    feature_frame = df
+                else:
+                    # overwrite existing data with same id
+                    if feature.id in feature_frame.index:
+                        feature_frame.loc[df.index] = df
+                    else:
+                        feature_frame = feature_frame.append(df)
+            self.store[table_path] = feature_frame
         self.commit()
         
     def delete_category(self, category):
@@ -127,32 +146,62 @@ class HDF5Pandas(Data):
         for category in av_category:
             if categories is not None and category not in categories:
                 continue
-            table_path = self.feature_path.format(
-                category=category, feature=cls.__name__)   
-            try:
-                df = self.store.get(table_path)
-            except:
-                continue 
-            df['category'] = category
+            df = self._get_feature_frame_cat(cls, category)
+            if df is None:
+                continue
             if feature_frame is None:
                 feature_frame = df
             else:            
-                feature_frame = feature_frame.append(df)
-        if self.date_column in feature_frame:    
-            del feature_frame[self.date_column]        
+                feature_frame = feature_frame.append(df)  
         return feature_frame
     
-    def get_features(self, cls, categories=None):
-        feature_frame = self._get_feature_frame(cls, categories=categories)
+    def _get_feature_frame_cat(self, cls, category):
+        table_path = self.feature_path.format(
+        category=category, feature=cls.__name__)   
+        try:
+            df = self.store.get(table_path)
+        except:
+            return 
+        df['category'] = category   
+        del df['datetime']
+        return df
+            
+    def get_features(self, feature_type, categories=None):
+        feature_frame = self._get_feature_frame(feature_type, 
+                                                categories=categories)
+        ids = feature_frame.index
         features = []
-        for row in feature_frame.iterrows():
-            r = row[1]
+        for id in ids:
+            r = feature_frame.loc[id]
             category = r['category']
             del r['category']
             values = np.array([v for v in r])
-            feature = cls(category)  
+            feature = feature_type(category, id=id)  
             feature.values = values
             features.append(feature)
+        return features
+    
+    def get_joined_features(self, feature_types, categories):
+        features = []
+        if categories is None:
+            categories = self.get_categories()
+        for category in categories:
+            common_ids = None
+            feature_frames = []
+            for feat_type in feature_types:
+                feature_frame = self._get_feature_frame_cat(feat_type, category)                 
+                del feature_frame['category']                
+                ids = feature_frame.index.values
+                if common_ids is None:
+                    common_ids = set(ids)
+                else:
+                    common_ids = common_ids & set(ids)
+                feature_frames.append(feature_frame)        
+            for id in common_ids:
+                feature = JoinedFeature(category, id=id)                
+                for feature_frame in feature_frames:
+                    feature.add(feature_frame.loc[id].values)
+                features.append(feature)
         return features
     
     def save_classifier(self, classifier):

@@ -7,14 +7,23 @@ from scipy.sparse.csgraph import floyd_warshall
 from masterarbeit.model.features.feature import UnsupervisedFeature
 from masterarbeit.model.features.codebook import (DictLearningCodebook, 
                                                   KMeansCodebook)
+import itertools
 import math
 distance = euclidean
 shortest_path = floyd_warshall
 
 def get_points_on_line(p1, p2, n=10):
-    x = np.linspace(p1[0], p2[0], n+2)
-    y = np.linspace(p1[1], p2[1], n+2)    
-    return zip(x, y)
+    points = np.zeros((n, 2))
+    x = np.linspace(p1[0], p2[0], n).astype(np.int)
+    y = np.linspace(p1[1], p2[1], n).astype(np.int)
+    points[:, 0] = x
+    points[:, 1] = y
+    ## take unique points only
+    #points_on_line = []    
+    #for i in range(1, n):
+        #if (points[i] == points[i-1]).sum() < 2:
+            #points_on_line.append(points[i])        
+    return points
 
 class IDSC(UnsupervisedFeature):
     '''
@@ -24,9 +33,9 @@ class IDSC(UnsupervisedFeature):
     codebook_type = None
     histogram_length = None
     n_contour_points = 300
-    n_angle_buckets = 8
-    n_distance_buckets = 8
-    columns = np.arange(n_angle_buckets).astype(np.str)
+    n_angle_bins = 8
+    n_distance_bins = 8
+    columns = np.arange(n_angle_bins).astype(np.str)
     n_levels = 1
     
     def _describe(self, binary, steps=None):
@@ -37,6 +46,9 @@ class IDSC(UnsupervisedFeature):
         self.max_distance = distance((0, 0), binary.shape)
         contour_points = self._sample_contour_points(binary, 
                                                      self.n_contour_points)
+        if contour_points is None:
+            print('contours missing in IDSC {}'.format(self.id))
+            return np.zeros(len(self.histogram_length))
         dist_matrix = self._build_distance_matrix(binary, contour_points)
         context = self._build_shape_context(dist_matrix, contour_points)        
         
@@ -45,11 +57,10 @@ class IDSC(UnsupervisedFeature):
         if steps is not None:
             img = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
             for p in contour_points:
-                img = cv2.circle(img, tuple(p), 2, thickness=20, 
-                                 color=(0, 255, 0))
+                cv2.circle(binary, tuple(p), 2, thickness=20, 
+                           color=(0, 255, 0))
             steps['picked points'] = img
-            
-        # flatten the histograms        
+                 
         return context
         
     def _sample_contour_points(self, binary, n):
@@ -96,25 +107,25 @@ class IDSC(UnsupervisedFeature):
                              skip_distant_points=False):
         histogram = []
         max_log_distance = np.log2(self.max_distance)
-        # steps between assigned buckets
-        dist_step = max_log_distance / self.n_distance_buckets
-        angle_step = np.pi * 2 / self.n_angle_buckets
+        # steps between assigned bins
+        dist_step = max_log_distance / self.n_distance_bins
+        angle_step = np.pi * 2 / self.n_angle_bins
         # find shortest paths in distance matrix (distances as weights)
         graph = shortest_path(distance_matrix, directed=False)
     
         # iterate all points on contour
         for i, (x0, y0) in enumerate(contour_points):
-            hist = np.zeros((self.n_angle_buckets, self.n_distance_buckets))
+            hist = np.zeros((self.n_angle_bins, self.n_distance_bins))
     
             # calc. contour tangent from previous to next point
             # to determine angles to all other contour points
             (prev_x, prev_y) = contour_points[i - 1]
             (next_x, next_y) = contour_points[(i + 1) % len(contour_points)]
-            contourTangent = np.arctan2(next_y - prev_y, 
+            tangent = np.arctan2(next_y - prev_y, 
                                         next_x - prev_x)
     
             # inspect relationship to all other points (except itself)
-            # direction and distance are logarithmic partitioned into n buckets
+            # direction and distance are logarithmic partitioned into n bins
             for j, (x1, y1) in enumerate(contour_points):
                 if j == i: 
                     continue
@@ -125,17 +136,16 @@ class IDSC(UnsupervisedFeature):
                 # ignore unreachable points, if requested
                 elif skip_distant_points:
                     continue
-                # else unreachable point is put in last dist. bucket
+                # else unreachable point is put in last dist. bin
                 else:
                     log_dist = max_log_distance
-                angle = (contourTangent - 
-                         np.arctan2(y1 - y0, x1 - x0)) % (2 * np.pi)
-                # calculate buckets, the inspected point belongs to
+                angle = (tangent - np.arctan2(y1 - y0, x1 - x0)) % (2 * np.pi)
+                # calculate bins, the inspected point belongs to
                 dist_idx = int(min(np.floor(log_dist / dist_step), 
-                                   self.n_distance_buckets - 1))
+                                   self.n_distance_bins - 1))
                 angle_idx = int(min(angle / angle_step, 
-                                    self.n_angle_buckets - 1))    
-                # increase bin in bucket
+                                    self.n_angle_bins - 1))    
+                # point fits into bin
                 hist[angle_idx, dist_idx] += 1
     
             histogram.append(hist)
@@ -205,33 +215,140 @@ class IDSCGaussians(IDSC):
             contour_points = self._sample_contour_points(
                 filtered, self.n_contour_points[i])
             
-            dist_matrix = self._build_distance_matrix(filtered,
-                                                      contour_points)   
-            
-            # get the shape context in max_distance (skip distant points)
-            context = self._build_shape_context(dist_matrix, contour_points,
-                                                skip_distant_points=True)  
+            # leaf structures too thin > set to zero (serves as indicator as well)
+            if contour_points is None:
+                print('contours missing in IDSC {} at gauss level {}'.format(
+                    gauss_level, self.id))
+                context = np.zeros(len(self.histogram_length))  
+                    
+            else:
+                dist_matrix = self._build_distance_matrix(filtered,
+                                                          contour_points)   
+                
+                # get the shape context in max_distance (skip distant points)
+                context = self._build_shape_context(dist_matrix, contour_points,
+                                                    skip_distant_points=True)  
             level_contexts.append(context)
             
             ### Visualisation of gauss levels ###
                 
             if steps is not None:
                 thickness = int(20 / (i + 1))
-                img = cv2.cvtColor(filtered, cv2.COLOR_GRAY2BGR)
+                img = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
                 for p in contour_points:
-                    img = cv2.circle(img, tuple(p), 2, thickness=thickness, 
-                                     color=(0, 255, 0))
+                    cv2.circle(img, tuple(p), 2, thickness=thickness, 
+                               color=(0, 255, 0))
                 # take an example point to visualize the max distance
                 ex_point = contour_points[int(len(contour_points) / 2)]
-                img = cv2.circle(img, tuple(p), 2, thickness=20, 
-                                 color=(255, 0, 0))        
-                img = cv2.circle(img, tuple(p), int(self.max_distance), 
-                                 thickness=20, 
-                                 color=(255, 0, 0))                
+                cv2.circle(img, tuple(p), 2, thickness=20, 
+                           color=(255, 0, 0))        
+                cv2.circle(img, tuple(p), int(self.max_distance), 
+                           thickness=20, color=(255, 0, 0))                
                 steps['gauss level {}'.format(gauss_level)] = img
                 
         return level_contexts
+    
+    
+#class SPTC(IDSC):
+    #label = 'Shortest Path Texture Context'
+    #binary_input = False
+    #histogram_length = 50
+    #codebook_type = KMeansCodebook
+    #orientation_bins = 8
+    
+    #def _describe(self, image, steps=None): 
+        #gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        #sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
+        #sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)     
+        #if steps is not None:
+            #cv2.imshow('x', sobel_x)
+            #cv2.imshow('y', sobel_y)
+            ##steps['Sobel X'] = sobel_x
+            ##steps['Sobel Y'] = sobel_y
+        #self._build_orientation_matrix(sobel_x, sobel_y)
         
+        ## maximum distance is the from upper left to lower right pixel,
+        ## so all points lie within distance
+        #binary = gray.copy()
+        #binary[binary == 255] = 0
+        #binary = np.clip(binary, 0, 1)
+        #self.max_distance = distance((0, 0), binary.shape)
+        #contour_points = self._sample_contour_points(binary, 
+                                                     #self.n_contour_points)
+        #dist_matrix = self._build_distance_matrix(binary, contour_points)
+        #context = self._build_shape_context(dist_matrix, contour_points)           
+        #return context
+        
+    #def _build_orientation_matrix(self, x_gradient, y_gradient):
+        #orientation = np.zeros(x_gradient.shape)
+        ##for i, j in itertools.product(range(x_gradient.shape[0]), 
+                                      ##range(x_gradient.shape[1])):
+            ##x = x_gradient[i, j]
+            ##y = y_gradient[i, j]
+            ##angle = np.arctan2(y, x)
+            ##orientation[i, j] = angle
+        #self.orientation_matrix = np.arctan2(y_gradient, x_gradient)
+    
+    #def _build_shape_context(self, distance_matrix, contour_points, 
+                             #skip_distant_points=True):
+        #histogram = []
+        #max_log_distance = np.log2(self.max_distance)
+        ## steps between assigned bins
+        #dist_step = max_log_distance / self.n_distance_bins
+        #angle_step = np.pi * 2 / self.n_angle_bins
+        ## find shortest paths in distance matrix (distances as weights)
+        #graph = shortest_path(distance_matrix, directed=False)
+    
+        ## iterate all points on contour
+        #for i, (x0, y0) in enumerate(contour_points):
+            #hist = np.zeros((self.n_angle_bins, self.n_distance_bins, self.orientation_bins))
+    
+            ## calc. contour tangent from previous to next point
+            ## to determine angles to all other contour points
+            #(prev_x, prev_y) = contour_points[i - 1]
+            #(next_x, next_y) = contour_points[(i + 1) % len(contour_points)]
+            #tangent = np.arctan2(next_y - prev_y, 
+                                        #next_x - prev_x)
+            #n_reachable = 0
+    
+            ## inspect relationship to all other points (except itself)
+            ## direction and distance are logarithmic partitioned into n bins
+            #for j, (x1, y1) in enumerate(contour_points):
+                #if j == i: 
+                    #continue
+                #dist = graph[i, j]
+                ## 0 determines, that there is no path to point 
+                #if dist != 0:                
+                    #log_dist = np.log2(dist)
+                ## ignore unreachable points, if requested
+                #elif skip_distant_points:
+                    #continue
+                ## else unreachable point is put in last dist. bin
+                #else:
+                    #log_dist = max_log_distance
+                #angle = (tangent - np.arctan2(y1 - y0, x1 - x0)) % (2 * np.pi)
+                ## calculate bins, the inspected point belongs to
+                #dist_idx = int(min(np.floor(log_dist / dist_step), 
+                                   #self.n_distance_bins - 1))
+                #angle_idx = int(min(angle / angle_step, 
+                                    #self.n_angle_bins - 1))
+                
+                ## point fits into bin              
+                #hist[angle_idx, dist_idx] += self._orientation_histogram((x0, y0), (x1, y1))
+            
+            #hist /= hist.max()
+            #histogram.append(hist)
+    
+        #return np.array(histogram)        
+    
+    #def _orientation_histogram(self, p1, p2):
+        #points = get_points_on_line(p1, p2, n=50)
+        #orientations = []
+        #for point in points:
+            #orientations.append(self.orientation_matrix[int(point[1]), int(point[0])])
+        #hist = np.histogram(np.array(orientations), bins=self.orientation_bins, 
+                            #range=(-np.pi, np.pi))
+        #return hist[0]
         
 ### the callable classes with defined codebook types ###
     

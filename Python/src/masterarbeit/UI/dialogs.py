@@ -620,7 +620,8 @@ class ExtractFeatureThread(ProgressThread):
                     image = read_image(input_file)
                     binary = None                     
                     for feat_type in self.feature_types:
-                        feat = feat_type(species)   
+                        id = os.path.split(input_file)[1]
+                        feat = feat_type(species, id=id)
                         if feat_type.binary_input:
                             if binary is None:
                                 binary = self.processor.process(image)           
@@ -670,14 +671,15 @@ class ExtractFeatureThread(ProgressThread):
     def add_features(self, features, species=None):   
         if len(features) == 0:
             return
-        self.status.emit('Storing features, this may take a while...', -1)   
+        self.status.emit('Storing features...', -1)   
         self.store.add_features(features, category=species, replace=self.replace)
         #self.data.commit()
         text = '{} features'.format(len(features))
         if self.replace:
             text += ' stored, replacing old entries'
         else:
-            text += ' appended to store'        
+            text += ' appended to store'    
+        self.status.emit(text, -1)
 
 class WaitDialog(QDialog):
     finished = QtCore.pyqtSignal()
