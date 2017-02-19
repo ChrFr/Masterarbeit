@@ -130,8 +130,8 @@ class KMeansCodebook(Codebook):
     def _fit(self, feature_values, n_components):        
         # reshape to two dimensional vector (list of 1d features)
         feature_vector = feature_values.reshape(feature_values.shape[0], -1)
-        pca = PCA(n_components=n_components).fit(feature_vector)
-        codebook = KMeans(init=pca.components_, 
+        #pca = PCA(n_components=n_components).fit(feature_vector)
+        codebook = KMeans(#init=pca.components_, 
                           n_clusters=n_components,
                           n_init=1).fit(feature_vector)
         return codebook

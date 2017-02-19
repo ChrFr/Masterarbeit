@@ -51,6 +51,7 @@ class ComplexMLP(MLP):
     dense_layers = 1
     activation = 'relu'
     hidden_units = 64
+    
     def setup_model(self, input_dim, n_categories):    
         self.input_dim = input_dim
         for layer in range(self.dense_layers):

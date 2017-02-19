@@ -16,52 +16,6 @@ from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 
-def test_mlp(features, classifier):
-    classifier.train(features) 
-    #h5.save_classifier(mlp)
-    #mlp_loaded = h5.get_classifier(MLP, 'IDSCDictTESTbatch')
-    #idx = np.random.choice(len(features), 15)
-    #feature_test = np.array(features)[idx]
-    predicted = classifier.predict(features)    
-    real = [f.category for f in features]
-    print('{}/{}'.format((real==predicted).sum(), len(real)))
-    
-    #features = h5.get_features(ZernikeMoments, ['Klarapfel', 'roter Boskop', 'Pfirsich', 'Platane', 'Stieleiche'])  
-    #mlp.train(features) 
-    #predicted = mlp.predict(features)    
-    #real = [f.category for f in features]
-    #print('{}/{}'.format((real==predicted).sum(), len(real)))    
-    
-    #features = h5.get_features(HuMoments, ['Klarapfel', 'roter Boskop', 'Pfirsich', 'Platane', 'Stieleiche'])  
-    #mlp.train(features) 
-    #predicted = mlp.predict(features)    
-    #real = [f.category for f in features]
-    #print('{}/{}'.format((real==predicted).sum(), len(real))) 
-    
-    #from os import listdir
-    #from os.path import isfile, join
-    #paths = [('Platane', 'C:/Users/chris/Desktop/test/Platane')]#,
-             ##('Stieleiche', 'C:/Users/chris/Desktop/test/Stieleiche')]
-    #features_2 = []
-    #codebook = h5.get_codebook(IDSCDict)
-    #for path in paths:
-        #files = [join(path[1], f) for f in listdir(path[1]) if isfile(join(path[1], f))]
-        #for i, f in enumerate(files): 
-            #print(f)
-            #img = read_image(f)
-            #binary = Binarize().process(img)
-            #feature = IDSCDict(path[0])
-            #feature.describe(binary)        
-            #feature.histogram(codebook)
-            #features_2.append(feature)
-            #if i == 6: break
-    #predicted = mlp_loaded.predict(features_2)
-        
-        
-    
-    #id = np.random.choice(len(values), 15)
-    #np.random.shuffle(x)
-    #mlp.predict(features)
     
 def validation_test(features, classifier):
     #categories, values, feat_types = zip(*[(f.category, f.values, type(f)) 
@@ -97,34 +51,45 @@ def test_join(feat_types, species, h5):
 def test_mlp_def(feat_type, h5):
     features = h5.get_features(feat_type, species) 
     
-    #for hidden_units in [32, 64, 128]:
-        #classifier = ComplexMLP('IDSCDictTESTbatch')
-        #classifier.hidden_units = hidden_units
-        #validation_test(features, classifier) 
+    for hidden_units in [32, 64, 128, 256]:
+        print('hidden units: {}'.format(hidden_units))
+        classifier = ComplexMLP('IDSCDictTESTbatch')
+        classifier.hidden_units = hidden_units
+        validation_test(features, classifier) 
         
-    #for dense_layers in range(0, 5):
-        #classifier = ComplexMLP('IDSCDictTESTbatch')
-        #classifier.dense_layers = dense_layers
-        #validation_test(features, classifier) 
+    for dense_layers in range(1, 4):
+        print('dense layers: {}'.format(dense_layers))
+        classifier = ComplexMLP('IDSCDictTESTbatch')
+        classifier.dense_layers = dense_layers
+        validation_test(features, classifier) 
         
     for activation in ['sigmoid', 'hard_sigmoid', 'relu', 'tanh', 'softplus', 'softsign', 'linear']:
         print(activation)
         classifier = ComplexMLP('IDSCDictTESTbatch')
         classifier.activation = activation
-        validation_test(features, classifier) 
-        
+        validation_test(features, classifier)         
     
 if __name__ == '__main__':
     h5 = HDF5Pandas()
     #h5.open('../../hdf5_test.h5') 
     #h5.open('../../contour_test.h5')  
-    h5.open('../../test_with_id.h5')    
+    h5.open('../../eigenes_set.h5')    
     species = None#['1 - Klarapfel', '2 - roter Boskop', '7 - Apfelquitte']
     feat_types = [IDSCGaussiansKMeans, LocalBinaryPattern, LocalBinaryPatternCenterPatch, LocalBinaryPatternPatches] #IDSCGaussiansKMeans, IDSCDict, ZernikeMoments, IDSCKMeans, LocalBinaryPatternPatch
     
     ComplexMLP.verbose = 0    
-    ComplexMLP.epoch = 2000  
+    ComplexMLP.epoch = 200
+    ComplexMLP.activation = 'softsign'
+    test_feat_types([IDSCKMeans], species, h5)
+    test_feat_types([IDSCKMeans], species, h5)
+    test_feat_types([IDSCKMeans], species, h5)
+    print('-' * 10)  
     test_feat_types([IDSCGaussiansKMeans], species, h5)
+    test_feat_types([IDSCGaussiansKMeans], species, h5)
+    test_feat_types([IDSCGaussiansKMeans], species, h5)
+    
+    #test_mlp_def(IDSCGaussiansKMeans, h5)
+    
     #test_feat_types([GaborFilterBankCenterPatch], species, h5)   
     #test_feat_types([GaborFilterBankCenterPatch], species, h5)   
     #test_mlp_def(feat_types[0], species, h5)

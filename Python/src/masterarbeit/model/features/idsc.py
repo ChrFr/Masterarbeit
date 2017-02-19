@@ -3,13 +3,15 @@ import scipy as sp, scipy.spatial
 import cv2
 from sklearn.metrics import pairwise_distances
 from scipy.spatial.distance import euclidean
+import itertools
+import math
 from scipy.sparse.csgraph import floyd_warshall
+from sklearn.preprocessing import normalize
+
 from masterarbeit.model.features.feature import UnsupervisedFeature
 from masterarbeit.model.segmentation.helpers import simple_binarize
 from masterarbeit.model.features.codebook import (DictLearningCodebook, 
                                                   KMeansCodebook)
-import itertools
-import math
 distance = euclidean
 shortest_path = floyd_warshall
 
@@ -36,7 +38,6 @@ class IDSC(UnsupervisedFeature):
     n_contour_points = 300
     n_angle_bins = 8
     n_distance_bins = 8
-    columns = np.arange(n_angle_bins).astype(np.str)
     n_levels = 1
     binary_input = True
     
@@ -59,7 +60,7 @@ class IDSC(UnsupervisedFeature):
             for p in contour_points:
                 img= cv2.circle(binary, tuple(p), 2, thickness=20, 
                                 color=(0, 255, 0))
-            steps['picked points'] = img
+            steps['picked points'] = img   
                  
         return context
         
@@ -98,7 +99,7 @@ class IDSC(UnsupervisedFeature):
                     # and store in matrix (mirrored)
                     dist = distance(p1, p2)
                     # ignore distances beyond the defined maximum 
-                    # (extension for gauss leveled IDSC, can never be ful-
+                    # (extension for gauss pyramid IDSC, can never be ful-
                     # filled in normal IDSC)
                     if dist > self.max_distance:
                         break
@@ -150,8 +151,11 @@ class IDSC(UnsupervisedFeature):
                                     self.n_angle_bins - 1))    
                 # point fits into bin
                 hist[angle_idx, dist_idx] += 1
-    
-            histogram.append(hist)
+
+            # L1 norm
+            if hist.sum() > 0:
+                hist = hist / hist.sum()
+            histogram.append(hist.flatten())
     
         return np.array(histogram)    
     
@@ -173,13 +177,8 @@ class IDSCGaussians(IDSC):
                                     left=border_size, right=border_size, 
                                     borderType= cv2.BORDER_CONSTANT, value=[0])
             
-        max_distance = distance((0, 0), binary.shape)        
-        
+        max_distance = distance((0, 0), binary.shape)                
         level_contexts = []        
-        # alternative to gauss: polygon approximation?
-        #epsilon = 0.01 * cv2.arcLength(contour_points, True)
-        #approx = cv2.approxPolyDP(contour_points,epsilon,True)    
-        #appr_contour_points = approx.reshape(approx.shape[0], approx.shape[2])    
         
         # grayscale image needed for thresholding gauss
         if binary.max() == 1:
@@ -192,16 +191,19 @@ class IDSCGaussians(IDSC):
             # maximum distance decreases exponentially with increasing detail 
             self.max_distance = max_distance / np.power(
                 self.tau, self.n_levels - level - 1)
-            
-            # keep input image at finest level
+                        
             if level == 0:
+                # keep input image at finest level
                 pyr_binary = binary
+                # don't skip points as well (-> do original IDSC)
+                skip_distant_points = False
             else:
                 gaussian = cv2.GaussianBlur(binary, (0,0), sigma)
-                # cut off small blurred values (else shape would be blown up)
+                # remove blurred outlines by thresholding
                 ret, thresh = cv2.threshold(gaussian, 20, 255, 
                                             cv2.THRESH_BINARY)
                 pyr_binary = thresh
+                skip_distant_points = True
             
             # individual contour points for each level (ToDo: take same points
             # on every level)  
@@ -218,9 +220,11 @@ class IDSCGaussians(IDSC):
                 dist_matrix = self._build_distance_matrix(pyr_binary,
                                                           contour_points)   
                 
-                # get the shape context in max_distance (skip distant points)
-                context = self._build_shape_context(dist_matrix, contour_points,
-                                                    skip_distant_points=True)  
+                # get the shape context in max_distance neighbourhood
+                context = self._build_shape_context(
+                    dist_matrix, contour_points, 
+                    skip_distant_points=skip_distant_points)  
+                
             level_contexts.append(context)
             
             ### Visualisation of gauss levels ###
@@ -240,111 +244,13 @@ class IDSCGaussians(IDSC):
                 steps['pyramid {}'.format(level)] = img
                 
         return level_contexts
-    
-#class SPTC(IDSC):
-    #label = 'Shortest Path Texture Context'
-    #binary_input = False
-    #histogram_length = 50
-    #codebook_type = KMeansCodebook
-    #orientation_bins = 8
-    
-    #def _describe(self, image, steps=None): 
-        #gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        #sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
-        #sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)     
-        #if steps is not None:
-            #cv2.imshow('x', sobel_x)
-            #cv2.imshow('y', sobel_y)
-            ##steps['Sobel X'] = sobel_x
-            ##steps['Sobel Y'] = sobel_y
-        #self._build_orientation_matrix(sobel_x, sobel_y)
-        
-        ## maximum distance is the from upper left to lower right pixel,
-        ## so all points lie within distance
-        #binary = self._simple_binarize(gray)
-        #self.max_distance = distance((0, 0), binary.shape)
-        #contour_points = self._sample_contour_points(binary, 
-                                                     #self.n_contour_points)
-        #dist_matrix = self._build_distance_matrix(binary, contour_points)
-        #context = self._build_shape_context(dist_matrix, contour_points)           
-        #return context
-        
-    #def _build_orientation_matrix(self, x_gradient, y_gradient):
-        #orientation = np.zeros(x_gradient.shape)
-        ##for i, j in itertools.product(range(x_gradient.shape[0]), 
-                                      ##range(x_gradient.shape[1])):
-            ##x = x_gradient[i, j]
-            ##y = y_gradient[i, j]
-            ##angle = np.arctan2(y, x)
-            ##orientation[i, j] = angle
-        #self.orientation_matrix = np.arctan2(y_gradient, x_gradient)
-    
-    #def _build_shape_context(self, distance_matrix, contour_points, 
-                             #skip_distant_points=True):
-        #histogram = []
-        #max_log_distance = np.log2(self.max_distance)
-        ## steps between assigned bins
-        #dist_step = max_log_distance / self.n_distance_bins
-        #angle_step = np.pi * 2 / self.n_angle_bins
-        ## find shortest paths in distance matrix (distances as weights)
-        #graph = shortest_path(distance_matrix, directed=False)
-    
-        ## iterate all points on contour
-        #for i, (x0, y0) in enumerate(contour_points):
-            #hist = np.zeros((self.n_angle_bins, self.n_distance_bins, self.orientation_bins))
-    
-            ## calc. contour tangent from previous to next point
-            ## to determine angles to all other contour points
-            #(prev_x, prev_y) = contour_points[i - 1]
-            #(next_x, next_y) = contour_points[(i + 1) % len(contour_points)]
-            #tangent = np.arctan2(next_y - prev_y, 
-                                        #next_x - prev_x)
-            #n_reachable = 0
-    
-            ## inspect relationship to all other points (except itself)
-            ## direction and distance are logarithmic partitioned into n bins
-            #for j, (x1, y1) in enumerate(contour_points):
-                #if j == i: 
-                    #continue
-                #dist = graph[i, j]
-                ## 0 determines, that there is no path to point 
-                #if dist != 0:                
-                    #log_dist = np.log2(dist)
-                ## ignore unreachable points, if requested
-                #elif skip_distant_points:
-                    #continue
-                ## else unreachable point is put in last dist. bin
-                #else:
-                    #log_dist = max_log_distance
-                #angle = (tangent - np.arctan2(y1 - y0, x1 - x0)) % (2 * np.pi)
-                ## calculate bins, the inspected point belongs to
-                #dist_idx = int(min(np.floor(log_dist / dist_step), 
-                                   #self.n_distance_bins - 1))
-                #angle_idx = int(min(angle / angle_step, 
-                                    #self.n_angle_bins - 1))
-                
-                ## point fits into bin              
-                #hist[angle_idx, dist_idx] += self._orientation_histogram((x0, y0), (x1, y1))
-            
-            #hist /= hist.max()
-            #histogram.append(hist)
-    
-        #return np.array(histogram)        
-    
-    #def _orientation_histogram(self, p1, p2):
-        #points = get_points_on_line(p1, p2, n=50)
-        #orientations = []
-        #for point in points:
-            #orientations.append(self.orientation_matrix[int(point[1]), int(point[0])])
-        #hist = np.histogram(np.array(orientations), bins=self.orientation_bins, 
-                            #range=(-np.pi, np.pi))
-        #return hist[0]
+
         
 ### the callable classes with defined codebook types ###
     
 class IDSCKMeans(IDSC):
     codebook_type = KMeansCodebook
-    histogram_length = 50
+    histogram_length = 100
     columns = np.arange(0, histogram_length).astype(np.str)
     
     
@@ -356,14 +262,14 @@ class IDSCDict(IDSC):
 
 class IDSCGaussiansKMeans(IDSCGaussians):
     label = 'Gaussian Inner Distance Shape Context'
-    histogram_length = 100
+    histogram_length = 150
     codebook_type = KMeansCodebook
     columns = np.arange(0, histogram_length).astype(np.str)
 
 
 class IDSCGaussiansDict(IDSCGaussians):
     label = 'Gaussian Inner Distance Shape Context'
-    histogram_length = 100
+    histogram_length = 150
     codebook_type = DictLearningCodebook
     columns = np.arange(0, histogram_length).astype(np.str)
     
