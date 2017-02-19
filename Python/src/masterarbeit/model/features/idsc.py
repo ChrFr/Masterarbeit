@@ -5,6 +5,7 @@ from sklearn.metrics import pairwise_distances
 from scipy.spatial.distance import euclidean
 from scipy.sparse.csgraph import floyd_warshall
 from masterarbeit.model.features.feature import UnsupervisedFeature
+from masterarbeit.model.segmentation.helpers import simple_binarize
 from masterarbeit.model.features.codebook import (DictLearningCodebook, 
                                                   KMeansCodebook)
 import itertools
@@ -37,18 +38,17 @@ class IDSC(UnsupervisedFeature):
     n_distance_bins = 8
     columns = np.arange(n_angle_bins).astype(np.str)
     n_levels = 1
+    binary_input = True
     
     def _describe(self, binary, steps=None):
-        if len(binary.shape) > 2:
-            raise Exception('IDSC Features can only describe binary images')
         # maximum distance is the from upper left to lower right pixel,
         # so all points lie within distance
         self.max_distance = distance((0, 0), binary.shape)
         contour_points = self._sample_contour_points(binary, 
                                                      self.n_contour_points)
-        if contour_points is None:
+        if len(contour_points) == 0:
             print('contours missing in IDSC {}'.format(self.id))
-            return np.zeros(len(self.histogram_length))
+            return np.zeros(self.histogram_length)
         dist_matrix = self._build_distance_matrix(binary, contour_points)
         context = self._build_shape_context(dist_matrix, contour_points)        
         
@@ -57,8 +57,8 @@ class IDSC(UnsupervisedFeature):
         if steps is not None:
             img = cv2.cvtColor(binary, cv2.COLOR_GRAY2BGR)
             for p in contour_points:
-                cv2.circle(binary, tuple(p), 2, thickness=20, 
-                           color=(0, 255, 0))
+                img= cv2.circle(binary, tuple(p), 2, thickness=20, 
+                                color=(0, 255, 0))
             steps['picked points'] = img
                  
         return context
@@ -68,8 +68,9 @@ class IDSC(UnsupervisedFeature):
                                                     cv2.RETR_TREE, 
                                                     cv2.CHAIN_APPROX_NONE)
         if len(contours) == 0:
-            return None
+            return []
         # there should be only one contour, if segmentation was correctly done
+        # if there are more, caused by noise, take the longest one
         contour_points = max(contours,key=len)
         # find contour points adds unnessecary dim., 
         # remove second dim of length 1
@@ -96,7 +97,9 @@ class IDSC(UnsupervisedFeature):
                     # if all points on line in shape -> calculate distance 
                     # and store in matrix (mirrored)
                     dist = distance(p1, p2)
-                    # ignore distances beyond the defined maximum
+                    # ignore distances beyond the defined maximum 
+                    # (extension for gauss leveled IDSC, can never be ful-
+                    # filled in normal IDSC)
                     if dist > self.max_distance:
                         break
                     dist_matrix[j + i, i] = dist
@@ -122,7 +125,7 @@ class IDSC(UnsupervisedFeature):
             (prev_x, prev_y) = contour_points[i - 1]
             (next_x, next_y) = contour_points[(i + 1) % len(contour_points)]
             tangent = np.arctan2(next_y - prev_y, 
-                                        next_x - prev_x)
+                                 next_x - prev_x)
     
             # inspect relationship to all other points (except itself)
             # direction and distance are logarithmic partitioned into n bins
@@ -130,8 +133,8 @@ class IDSC(UnsupervisedFeature):
                 if j == i: 
                     continue
                 dist = graph[i, j]
-                # 0 determines, that there is no path to point 
-                if dist != 0:                
+                # 0 or infinity determine, that there is no path to point 
+                if dist != 0 and dist != np.inf:                
                     log_dist = np.log2(dist)
                 # ignore unreachable points, if requested
                 elif skip_distant_points:
@@ -158,27 +161,20 @@ class IDSCGaussians(IDSC):
     subclass this, no dictionary attached
     '''
     label = 'Gaussian Inner Distance Shape Context'
-    resolution = 2000000
-    # gauss kernels, coarsest to finest, determines number of gauss levels
-    gauss_kernels = [(501, 501), (101, 101), None]
-    # points to take per level
-    n_contour_points = [40, 200, 400]
-    columns = np.arange(len(gauss_kernels))
+    # points to take per level, from finest to coarsest (up the pyramid)
+    n_contour_points = [400, 200, 40]
     tau = 4
-    n_levels = len(gauss_kernels)
+    n_levels = len(n_contour_points)
     
-    def _describe(self, binary, steps={}):
-        if len(binary.shape) > 2:
-            raise Exception('IDSC Features can only describe binary images')
-        
-        resolution = binary.size
-        scale = math.sqrt(self.resolution / resolution)
-        new_shape = np.array(binary.shape) * scale
-        resized = cv2.resize(binary, tuple(new_shape.astype(np.int)))
-                
+    def _describe(self, binary, steps={}):   
+        # add a border, otherwise blurred shapes may melt with image margin
+        border_size = int(math.sqrt(binary.size) * 0.1)
+        binary = cv2.copyMakeBorder(binary, top=border_size, bottom=border_size, 
+                                    left=border_size, right=border_size, 
+                                    borderType= cv2.BORDER_CONSTANT, value=[0])
+            
         max_distance = distance((0, 0), binary.shape)        
         
-        n_levels = len(self.gauss_kernels)
         level_contexts = []        
         # alternative to gauss: polygon approximation?
         #epsilon = 0.01 * cv2.arcLength(contour_points, True)
@@ -188,32 +184,29 @@ class IDSCGaussians(IDSC):
         # grayscale image needed for thresholding gauss
         if binary.max() == 1:
             binary = binary.copy() * 255
-        for i, gauss_kernel in enumerate(self.gauss_kernels):
-            # starting with the coarsest level
-            gauss_level = n_levels - i
+                
+        # from finest level to coarsest level
+        for level in range(self.n_levels):
+            # sigma increases with level (going up in gauss pyramid)
+            sigma = np.power(8, level)
             # maximum distance decreases exponentially with increasing detail 
-            self.max_distance = max_distance / np.power(4, 
-                                                        n_levels - gauss_level)
+            self.max_distance = max_distance / np.power(
+                self.tau, self.n_levels - level - 1)
             
-            if gauss_kernel is not None:
-                gaussian = cv2.GaussianBlur(binary, gauss_kernel, 0)
+            # keep input image at finest level
+            if level == 0:
+                pyr_binary = binary
+            else:
+                gaussian = cv2.GaussianBlur(binary, (0,0), sigma)
                 # cut off small blurred values (else shape would be blown up)
                 ret, thresh = cv2.threshold(gaussian, 20, 255, 
                                             cv2.THRESH_BINARY)
-                
-                ## leaves with very thin structures may be 'blurred away', 
-                ## take more color information as shape
-                #if thresh.sum() == 0:
-                    #ret, thresh = cv2.threshold(gaussian, 10, 255, 
-                                                #cv2.THRESH_BINARY)                    
-                filtered = thresh
-            else:
-                filtered = binary
-          
+                pyr_binary = thresh
+            
             # individual contour points for each level (ToDo: take same points
             # on every level)  
             contour_points = self._sample_contour_points(
-                filtered, self.n_contour_points[i])
+                pyr_binary, self.n_contour_points[level])
             
             # leaf structures too thin > set to zero (serves as indicator as well)
             if contour_points is None:
@@ -222,7 +215,7 @@ class IDSCGaussians(IDSC):
                 context = np.zeros(len(self.histogram_length))  
                     
             else:
-                dist_matrix = self._build_distance_matrix(filtered,
+                dist_matrix = self._build_distance_matrix(pyr_binary,
                                                           contour_points)   
                 
                 # get the shape context in max_distance (skip distant points)
@@ -233,10 +226,10 @@ class IDSCGaussians(IDSC):
             ### Visualisation of gauss levels ###
                 
             if steps is not None:
-                thickness = int(20 / (i + 1))
-                img = cv2.cvtColor(image, cv2.COLOR_GRAY2BGR)
+                img = cv2.cvtColor(pyr_binary, cv2.COLOR_GRAY2BGR)
                 for p in contour_points:
-                    cv2.circle(img, tuple(p), 2, thickness=thickness, 
+                    cv2.circle(img, tuple(p), 2, 
+                               thickness=int(20 / (level + 1)), 
                                color=(0, 255, 0))
                 # take an example point to visualize the max distance
                 ex_point = contour_points[int(len(contour_points) / 2)]
@@ -244,10 +237,9 @@ class IDSCGaussians(IDSC):
                            color=(255, 0, 0))        
                 cv2.circle(img, tuple(p), int(self.max_distance), 
                            thickness=20, color=(255, 0, 0))                
-                steps['gauss level {}'.format(gauss_level)] = img
+                steps['pyramid {}'.format(level)] = img
                 
         return level_contexts
-    
     
 #class SPTC(IDSC):
     #label = 'Shortest Path Texture Context'
@@ -269,9 +261,7 @@ class IDSCGaussians(IDSC):
         
         ## maximum distance is the from upper left to lower right pixel,
         ## so all points lie within distance
-        #binary = gray.copy()
-        #binary[binary == 255] = 0
-        #binary = np.clip(binary, 0, 1)
+        #binary = self._simple_binarize(gray)
         #self.max_distance = distance((0, 0), binary.shape)
         #contour_points = self._sample_contour_points(binary, 
                                                      #self.n_contour_points)

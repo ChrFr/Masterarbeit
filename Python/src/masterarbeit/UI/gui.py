@@ -17,8 +17,7 @@ from masterarbeit.UI.main_window_ui import Ui_MainWindow
 from masterarbeit.config import Config
 from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
 from masterarbeit.config import (SEGMENTATION, FEATURES, CLASSIFIERS)
-from masterarbeit.model.segmentation.common import (mask, crop, read_image,
-                                                    remove_thin_objects)
+from masterarbeit.model.segmentation.helpers import (read_image, remove_thin_objects)
 from masterarbeit.UI.imageview import ImageViewer
 from masterarbeit.model.features.plot import pairplot
 from masterarbeit.UI.dialogs import (CropDialog, ExtractFeatureDialog, 
@@ -470,10 +469,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         def update_ui(result):
             if self.remove_thin_check.isChecked():
                 result = remove_thin_objects(result)
-            if self.mask_check.isChecked():
-                masked = mask(self.source_pixels, result)
-                result = crop(masked, border=50)                   
-                result[result == 0] = 255
             steps['result'] = result
             for name, pixels in steps.items():
                 self.segmentation_steps_combo.addItem(name, pixels)            
@@ -505,10 +500,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.feature_steps_combo.clear()
         steps = OrderedDict()
         index = self.feature_combo.currentIndex()
-        feature = self.feature_combo.itemData(index)('-')        
-        #diag = WaitDialog(lambda: feature.describe(self.preprocessed_pixels, 
-                                                   #steps=steps),                           
-                                  #parent=self)                                  
+        feature = self.feature_combo.itemData(index)('-')   
         
         def update_features():           
             self.feature_steps_combo.setCurrentIndex(
@@ -517,32 +509,46 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.feature_ouptut.setText(str(feature.values))
             
             for name, pixels in steps.items():
-                self.feature_steps_combo.addItem(name, pixels)                       
+                self.feature_steps_combo.addItem(name, pixels) 
+    
+        def describe():
+            feature.describe(self.preprocessed_pixels, steps=steps) 
+            if isinstance(feature, UnsupervisedFeature):
+                codebook = self.store.get_codebook(type(feature))
+                if codebook is None:
+                    error_message('Codebook needed but not built yet!', 
+                                  parent=self)
+                    return False
+                else:
+                    feature.histogram(codebook)                    
+            return True        
+                
+        def plot():
+            fig = plt.figure(dpi=200)            
+            width = .35
+            ind = np.arange(len(feature.values))                
+            plt.bar(ind, feature.values, width=width)
+            columns = feature.columns
+            if columns is None:
+                columns = np.arange(0, len(feature.values))
+            plt.xticks(ind + width / 2, columns)
+            fig.autofmt_xdate()                     
+            fig.canvas.draw()
+            plot_str = fig.canvas.tostring_rgb()
+            data = np.fromstring(plot_str, dtype=np.uint8, sep='')
+            data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,)) 
+            steps['values'] = data              
+                
+        success = describe()
+        if success:
+            plot()
+        update_features() 
         
-        feature.describe(self.preprocessed_pixels, steps=steps) 
-        if isinstance(feature, UnsupervisedFeature):
-            codebook = self.store.get_codebook(type(feature))
-            if codebook is None:
-                error_message('Codebook needed but not built yet!', parent=self)                
-                update_features()
-                return                
-            feature.histogram(codebook)
-            
-        fig = plt.figure(dpi=200)            
-        width = .35
-        ind = np.arange(len(feature.values))                
-        plt.bar(ind, feature.values, width=width)
-        columns = feature.columns
-        if columns is None:
-            columns = np.arange(0, len(feature.values))
-        plt.xticks(ind + width / 2, columns)
-        fig.autofmt_xdate()                     
-        fig.canvas.draw()
-        plot_str = fig.canvas.tostring_rgb()
-        data = np.fromstring(plot_str, dtype=np.uint8, sep='')
-        data = data.reshape(fig.canvas.get_width_height()[::-1] + (3,)) 
-        steps['values'] = data   
-        update_features()
+        # can't make WaitDialog here, cause catching exceptions (for missing 
+        # codebook) crashes the thread
+        #diag = WaitDialog(describe)            
+        #diag.finished.connect(plot_and_update)
+        #diag.run()  
 
     def reset_processed_views(self):
         self.segmentation_steps_combo.clear()

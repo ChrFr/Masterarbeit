@@ -7,44 +7,25 @@ import math
 from masterarbeit.model.segmentation.segmentation import Segmentation
 from skimage.morphology import remove_small_objects   
 
-class OpenCVSegmentation(Segmentation):
+class Binarize(Segmentation):    
     
-    def read(self, filename):     
-        """
-        read image from file
-        
-        Parameters
-        ----------
-        filename : str, name of the file to read       
-        """           
-        pixel_array = cv2.imread(filename, cv2.IMREAD_COLOR) 
-        cv2.cvtColor(pixel_array, cv2.COLOR_BGR2RGB, pixel_array)
-        return pixel_array    
-      
-    def write(self, image, filename):
-        pixels = image.copy()
-        cv2.cvtColor(pixels, cv2.COLOR_RGB2BGR, pixels)
-        success = cv2.imwrite(filename, pixels)
-        return success
-        
-
-class Binarize(OpenCVSegmentation):    
+    label = 'Binarize image with Otsu-Thresholding (OpenCV)'        
     
-    label = 'Binarize image with Otsu-Thresholding (OpenCV)'    
-    
-    
-    def process(self, image, steps=None):        
+    def _process(self, image, steps=None):        
         if len(image.shape) == 3:
             image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2GRAY)        
         ret, binary = cv2.threshold(image, 220, 255, 
-                                    cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)     
+                                    cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)  
+        if steps is not None:
+            steps['binary'] = binary
         return binary
     
     
 class KMeansBinarize(Segmentation):
     label = 'clustered k-means Binarization (OpenCV)'     
     resolution = 2000000
-    def process(self, image, steps=None):
+    
+    def _process(self, image, steps=None):
         resolution = image.shape[0] * image.shape[1]
         scale = math.sqrt(self.resolution / resolution)
         new_shape = (np.array(image.shape[:2]) * scale).astype(np.int)
@@ -92,20 +73,17 @@ class KMeansBinarize(Segmentation):
         
         return o_sized.astype(np.uint8)
     
+    
 class KMeansHSVBinarize(KMeansBinarize):
-    label = 'clustered k-means Binarization in HSV space (OpenCV)'    
-    def process(self, image, steps=None):
+    label = 'clustered k-means Binarization in HSV space (OpenCV)'   
+    
+    def _process(self, image, steps=None):
         hsv_image = cv2.cvtColor(image.copy(), cv2.COLOR_BGR2HSV)
         hsv_image[:, :, 0] = 0
         #hsv_image[:, :, 2] = 0
         if steps is not None:
             steps['hsv without hue'] = hsv_image
-        binary = super(KMeansHSVBinarize, self).process(hsv_image, steps)
+        binary = super(KMeansHSVBinarize, self)._process(hsv_image, steps)
 
         return binary
-
-def scale_to_bounding_box(binary, image):
-    contours = cv2.findContours(binary, 1, 2)
-    x,y,w,h = cv2.boundingRect(contours[0])
-    cropped = image[y: y + h, x: x + w]
-    return cropped.copy()    
+    

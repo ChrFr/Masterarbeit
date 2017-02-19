@@ -7,6 +7,7 @@ import cv2
 class HuMoments(Feature):
     label = 'Hu-Moments'
     columns = list(np.arange(7))
+    binary_input = True
     
     def _describe(self, binary, steps=None):
         clipped = binary.clip(max=1)
@@ -21,6 +22,7 @@ class HuMoments(Feature):
 class ZernikeMoments(Feature):
     label = 'Zernike-Moments'
     columns = list(np.arange(25))
+    binary_input = True
     
     def _describe(self, binary, steps=None):
         shape = list(binary.shape) + [3]
@@ -43,11 +45,4 @@ class ZernikeMoments(Feature):
             steps['contour'] = cont_img
         return moments 
         
-class Chebyshev(Feature):
-    label ='Chebyshev-Moments'
-    
-    def _describe(self, binary, steps=None):
-        from scipy.integrate import quad
-        pass
-    
     

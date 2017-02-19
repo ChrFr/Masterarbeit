@@ -3,8 +3,15 @@ import cv2
 
 from skimage.morphology import erosion, dilation, remove_small_objects   
 from skimage.morphology import disk, square
+   
+def simple_binarize(segmented_image):
+    gray = cv2.cvtColor(segmented_image, cv2.COLOR_BGR2GRAY)
+    gray[gray >= 230] = 0
+    binary = np.clip(gray, 0, 1)  
+    return binary
 
-def remove_thin_objects(binary):  
+def remove_thin_objects(segmented_image):  
+    binary = simple_binarize(segmented_image)
     process_width = 800
     res_factor = process_width / binary.shape[1]
     new_shape = (int(binary.shape[0] * res_factor), int(binary.shape[1] * res_factor))
@@ -21,9 +28,10 @@ def remove_thin_objects(binary):
     rem = rem.astype(np.uint8)
     
     # combine more detailed binary with 'blown up' binary   
-    masked_binary = mask(binary, rem_resized)           
     rem_resized = cv2.resize(rem, (binary.shape[1], binary.shape[0]))
-    return masked_binary    
+    masked_binary = mask(binary, rem_resized)    
+    masked_seg = mask(segmented_image, masked_binary) 
+    return crop(masked_seg)
     
 def mask(image, binary):
     binary = np.clip(binary, 0, 1)

@@ -4,7 +4,7 @@ import os
 from masterarbeit.model.segmentation import segmentation_opencv as pocv
 from masterarbeit.model.segmentation import segmentation_skimage as psk
 from masterarbeit.model.features.moments import ZernikeMoments, HuMoments
-from masterarbeit.model.features.texture import Sift, SiftPatch, LocalBinaryPattern, LocalBinaryPatternCenterPatch, Leafvenation, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Surf, SurfPatch, Orientation
+from masterarbeit.model.features.texture import Sift, SiftPatch, LocalBinaryPattern, LocalBinaryPatternCenterPatch, Leafvenation, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Surf, SurfPatch, LocalBinaryPatternKMeans
 from masterarbeit.model.features.borders import Borders
 from masterarbeit.model.features.idsc import (IDSCKMeans, IDSCDict, 
                                               IDSCGaussiansKMeans,
@@ -17,10 +17,10 @@ IMAGE_FILTER = 'Images (*.png, *.jpg)'
 ALL_FILES_FILTER = 'All Files(*.*)'
 HDF5_FILTER = 'HDF5 (*.h5)'
 
-SEGMENTATION = (pocv.Binarize, psk.BinarizeHSV, psk.SegmentGabor, 
+SEGMENTATION = (pocv.Binarize, psk.BinarizeHSV, 
                 pocv.KMeansBinarize, pocv.KMeansHSVBinarize)
 FEATURES = (HuMoments, ZernikeMoments, Borders, IDSCKMeans, IDSCDict,
-            IDSCGaussiansKMeans, IDSCGaussiansDict, Sift, SiftPatch, LocalBinaryPattern, LocalBinaryPatternCenterPatch, Leafvenation, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Surf, SurfPatch, Orientation)
+            IDSCGaussiansKMeans, IDSCGaussiansDict, Sift, SiftPatch, LocalBinaryPattern, LocalBinaryPatternCenterPatch, Leafvenation, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Surf, SurfPatch, LocalBinaryPatternKMeans)
 CLASSIFIERS = (ComplexMLP, SimpleMLP)
 DATA = [HDF5Pandas]
 

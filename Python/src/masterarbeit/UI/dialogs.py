@@ -15,8 +15,7 @@ from masterarbeit.UI.progress_ui import Ui_ProgressDialog
 from masterarbeit.UI.settings_ui import Ui_SettingsDialog
 from masterarbeit.model.segmentation.segmentation_skimage import BinarizeHSV
 from masterarbeit.model.segmentation.segmentation_opencv import Binarize
-from masterarbeit.model.segmentation.common import (mask, crop, 
-                                                    read_image, write_image)
+from masterarbeit.model.segmentation.helpers import (read_image, write_image)
 from masterarbeit.model.features.feature import UnsupervisedFeature
 from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER, FEATURES, 
                                  HDF5_FILTER, DATA, Config, SEGMENTATION)
@@ -281,13 +280,11 @@ class CropDialog(QDialog, Ui_CropDialog):
                     elif re.search('[ü,ä,ö,ß,Ü,Ö,Ä]', input_fp):
                         text = '<font color="red"><i>{f}</i> skipped, Umlaute not supported in OpenCV</font>'.format(f=input_fp)
                     else:
-                        binary = self.segmentation.process(image)
-                        masked_image = mask(image, binary)
-                        cropped = crop(masked_image, border=50)       
+                        segmented = self.segmentation.process(image)      
                         out_path = os.path.split(output_fp)[0]
                         if not os.path.exists(out_path):
                             os.makedirs(out_path)
-                        success = write_image(cropped, output_fp)                        
+                        success = write_image(segmented, output_fp)                        
                         if success:
                             text = '<i>{f}</i> cropped and written to <i>{o}</i>'.format(
                                 f=input_fp, o=output_fp)
@@ -453,8 +450,8 @@ class ExtractFeatureDialog(BatchFeatureDialog):
                                     #'if already cropped)') 
         
         #self.gridLayout.addWidget(self.crop_check, 9, 0, 1, 3)
-        self.codebook_check = QCheckBox('build (and replace) codebook from ' +
-                                        'images') 
+        self.codebook_check = QCheckBox('build (and replace) codebook ' +
+                                        'on the fly') 
         
         self.checkbox_layout.addWidget(self.replace_check)                      
         self.checkbox_layout.addWidget(self.codebook_check)
@@ -704,7 +701,10 @@ class WaitDialog(QDialog):
                 super(WaitThread, self).__init__()  
                 self.result = None
             def run(self):
-                self.result = function()  
+                try:
+                    self.result = function()  
+                except Exception as e:
+                    self.error = e
                 self.finished.emit()
         return WaitThread()
     

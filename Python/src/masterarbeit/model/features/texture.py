@@ -1,7 +1,3 @@
-from masterarbeit.model.features.feature import Feature, UnsupervisedFeature
-from masterarbeit.model.features.codebook import KMeansCodebook
-from masterarbeit.model.segmentation.segmentation_opencv import Binarize
-from masterarbeit.model.segmentation.common import crop
 from skimage.feature import local_binary_pattern, multiblock_lbp, draw_multiblock_lbp
 from skimage.transform import integral_image
 from sklearn.preprocessing import normalize
@@ -14,12 +10,17 @@ import numpy as np
 import cv2
 import itertools
 
+from masterarbeit.model.features.feature import Feature, UnsupervisedFeature
+from masterarbeit.model.features.codebook import KMeansCodebook
+from masterarbeit.model.segmentation.segmentation_opencv import Binarize
+from masterarbeit.model.segmentation.helpers import crop
+from masterarbeit.model.segmentation.helpers import simple_binarize
+
 class Sift(UnsupervisedFeature):
     label = 'Sift Keypoints'
     histogram_length = 50
     columns = np.arange(0, histogram_length)
     codebook_type = KMeansCodebook
-    binary_input = False
     
     def _describe(self, image, steps=None):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)   
@@ -49,10 +50,9 @@ class Surf(UnsupervisedFeature):
     label = 'Surf Keypoints'
     histogram_length = 50
     codebook_type = KMeansCodebook
-    binary_input = False
     
     def _describe(self, image, steps=None):    
-        surf = cv2.xfeatures2d.SURF_create(400)
+        surf = cv2.xfeatures2d.SURF_create()
         kp, des = surf.detectAndCompute(image, None)
         if steps is not None:
             img_keys = cv2.drawKeypoints(image, kp, None, 
@@ -66,13 +66,22 @@ class SurfPatch(Surf):
     label = 'Surf Keypoints with gabor'
     
     def _describe(self, image, steps=None):
-        patch = get_center_patch(image, 1)
-        gabor_patch = gabor(patch)
-        if steps is not None:
-            steps['patch'] = patch
-            steps['gabor'] = gabor_patch
-        return super(SurfPatch, self)._describe(patch, steps=steps)    
-            
+        #patch = get_center_patch(image, 1)
+        #gabor_patch = gabor(patch)
+        #if steps is not None:
+            #steps['patch'] = patch
+            #steps['gabor'] = gabor_patch
+        patches = get_matrix_patches(image, 100)
+        desc = None
+        for patch in patches:
+            patch_desc = super(SurfPatch, self)._describe(patch, steps=None)  
+            if patch_desc is not None:
+                if desc is None:
+                    desc = patch_desc
+                else:
+                    desc = np.concatenate((desc, patch_desc))
+        return desc
+                
 def gabor(image):
 
     def build_filters():
@@ -102,33 +111,18 @@ class LocalBinaryPattern(Feature):
     label = 'Local Binary Pattern Detection'
     radius = 3
     n_points = 8 * radius        
-    binary_input = False
     
-    def _describe(self, image, steps=None, eps=1e-7):
+    def _describe(self, image, steps=None):
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)   
         #gray = gabor(gray)
         lbp = local_binary_pattern(gray, self.n_points, self.radius, method='uniform')
         histogram, _ = np.histogram(lbp.ravel(),
-                                    bins=np.arange(0, self.n_points + 3),
+                                    bins=np.arange(0, self.n_points + 2),
                                     range=(0, self.n_points + 2))        
-        #histogram, _ = np.histogram(lbp, bins=self.histogram_length, range=(0, self.histogram_length))
-        #max_v = histogram.max()
-        #max_idx = histogram == max_v
-        #histogram[max_idx] = 0
-        #int_image = integral_image(gray)
-        #histogram[max_idx] = min(histogram.sum(), max_v)    
-        #lbp_code = multiblock_lbp(int_image, 0, 0, 90, 90)
-        #if steps is not None:
-            ##img = draw_multiblock_lbp(gray, 0, 0, 90, 90,
-                                      ##lbp_code=lbp_code, alpha=0.5)   
-            #steps['lbp'] = lbp
-            
-        normed = normalize(histogram.reshape(1, -1))[0]                
-        return normed
-        #histogram = histogram.astype("float")
-        #histogram /= (histogram.sum() + eps)        
-        #return histogram
-        
+        #normed = normalize(histogram.reshape(1, -1))[0]                
+        return histogram
+    
+    
 class LocalBinaryPatternCenterPatch(LocalBinaryPattern):
     label = 'Local Binary Pattern Detection on extracted texture patch'
     # sufficient ratio of information in texture patch
@@ -145,7 +139,6 @@ class LocalBinaryPatternCenterPatch(LocalBinaryPattern):
 class LocalBinaryPatternPatches(LocalBinaryPattern):
 
     label = 'Local Binary Pattern Multi Patches'
-    binary_input = False
     
     def _describe(self, image, steps=None):        
         #patches = get_random_patches(image, 100, 100)
@@ -158,12 +151,25 @@ class LocalBinaryPatternPatches(LocalBinaryPattern):
                 histogram = sub_hist
             else:
                 histogram += sub_hist
-        return histogram / len(patches)
+        histogram = histogram / len(patches)
+        return normalize(histogram.reshape(1, -1))[0]
+    
+    
+class LocalBinaryPatternKMeans(UnsupervisedFeature):
+    label = 'Local Binary Pattern Detection KMeans'
+    radius = 3
+    n_points = 8 * radius        
+    histogram_length = 50
+    codebook_type = KMeansCodebook
+    
+    def _describe(self, image, steps=None):
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)   
+        lbp = local_binary_pattern(gray, self.n_points, self.radius, method='uniform')             
+        return lbp
     
     
 class Leafvenation(Feature):
     label = 'Leaf Veins Sceleton'
-    binary_input = False
     
     def _describe(self, image, steps=None):  
         scaled = self._common_scale(image)
@@ -205,30 +211,11 @@ class Leafvenation(Feature):
             perc_veins = veins.sum() / leaf_area
             histogram.append(perc_veins)
         
-        from masterarbeit.model.features.moments import ZernikeMoments
-        z_moments = ZernikeMoments('')._describe(veins)
-        return np.array(histogram + list(z_moments))
+        return np.array(histogram)
     
-class Orientation(Feature):
-    label = 'Color gradient histogram'
-    binary_input = False
-    def _describe(self, image, steps=None): 
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-        sobel_x = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=5)
-        sobel_y = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=5)     
-        if steps is not None:
-            cv2.imshow('x', sobel_x)
-            cv2.imshow('y', sobel_y)
-            #steps['Sobel X'] = sobel_x
-            #steps['Sobel Y'] = sobel_y
-        orientation_matrix = np.arctan2(sobel_y, sobel_x)
-        histogram = np.histogram(orientation_matrix, bins=10, 
-                                 range=(-np.pi, np.pi))[0]
-        return histogram / histogram.max()
         
 class Haralick(Feature):
     label = 'Haralick Features'
-    binary_input = False
     
     def _describe(self, image, steps=None):   
         #patch = get_center_patch(image) 
@@ -238,7 +225,7 @@ class Haralick(Feature):
         return np.array([histogram.mean()])
        
 def get_center_patch(image, texture_ratio=0.95):
-    binary = Binarize().process(image)
+    binary = simple_binarize(image)
              
     im2, contours, hierarchy = cv2.findContours(binary, 
                                                 cv2.RETR_TREE, 
@@ -284,10 +271,7 @@ def get_center_patch(image, texture_ratio=0.95):
     return patch
 
 def get_circular_patch(image, texture_ratio=1, steps=None):
-    # image is already segmented, set all foreground to white
-    image = image.copy()
-    image[image == 255] = 0
-    binary = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)   
+    binary = simple_binarize(image)
     binary[binary > 0] = 255
                  
     im2, contours, hierarchy = cv2.findContours(binary, 

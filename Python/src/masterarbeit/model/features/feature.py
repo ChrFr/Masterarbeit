@@ -4,12 +4,13 @@ from abc import abstractmethod
 import math
 import cv2
 import uuid
+from masterarbeit.model.segmentation.helpers import simple_binarize
 
 class Feature(metaclass=ABCMeta):   
     label = 'None'
     columns = None      
-    binary_input = True
-    common_resolution = 2000000
+    binary_input = False
+    n_pixels = 2000000
     
     def __init__(self, category, id=None):
         if id is None:
@@ -20,12 +21,12 @@ class Feature(metaclass=ABCMeta):
         
     def _common_scale(self, image):
         resolution = image.shape[0] * image.shape[1]
-        scale = math.sqrt(self.common_resolution / resolution)        
+        scale = math.sqrt(self.n_pixels / resolution)        
         new_shape = (np.array(image.shape[:2]) * scale).astype(np.int)
         # cv2 swaps width with height
         scaled = cv2.resize(image, (new_shape[1], new_shape[0]))
-        return scaled
-        
+        return scaled    
+    
     @property    
     def values(self):
         if self._v is None:
@@ -42,8 +43,10 @@ class Feature(metaclass=ABCMeta):
                             ))
         self._v = values
         
-    def describe(self, image, steps=None):
-        self._v = self._describe(image, steps=steps)
+    def describe(self, segmented_image, steps=None):
+        if self.binary_input:
+            segmented_image = simple_binarize(segmented_image)
+        self._v = self._describe(segmented_image, steps=steps)
         if self._v is None:
             return False
         return True
