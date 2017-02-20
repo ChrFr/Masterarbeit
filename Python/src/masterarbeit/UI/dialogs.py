@@ -429,8 +429,10 @@ class BuildDictionaryDialog(BatchFeatureDialog):
                 self.features_list.item(index))
             if checkbox.isChecked():
                 feat_types.append(FEATURES[index])
-        store = config.data()
-        store.open(config.source)
+        if len(self.files) == 0 or len(feat_types) == 0:
+            return
+        store = config.data()        
+        store.open(config.source)        
         for feat_type in feat_types:
             build_codebook(feat_type, self.files, store)            
         
@@ -599,7 +601,7 @@ class ExtractFeatureThread(ProgressThread):
                          'files...</b><br>', 0)
         
         feat_codebook_dict = self.get_codebook_dict()  
-        
+        text = ''
         for species, files in self.files.items():
             features_per_species = []   
             if self.stop_requested:

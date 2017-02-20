@@ -441,8 +441,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             feats = []
             feat_missing = False
             for feature_type in FEATURES:
-                feat_name = feature_type.__name__
-                feat_count = self.store.get_feature_count(species, feat_name)
+                feat_count = self.store.get_feature_count(species, feature_type)
                 label = feature_type.label
                 if issubclass(feature_type, UnsupervisedFeature):
                     label += ' ({})'.format(feature_type.codebook_type.__name__)

@@ -214,7 +214,7 @@ class IDSCGaussians(IDSC):
             if contour_points is None:
                 print('contours missing in IDSC {} at gauss level {}'.format(
                     gauss_level, self.id))
-                context = np.zeros(len(self.histogram_length))  
+                context = np.zeros(self.histogram_length)
                     
             else:
                 dist_matrix = self._build_distance_matrix(pyr_binary,

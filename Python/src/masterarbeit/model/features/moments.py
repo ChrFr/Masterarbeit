@@ -6,7 +6,7 @@ import cv2
 
 class HuMoments(Feature):
     label = 'Hu-Moments'
-    columns = list(np.arange(7))
+    dim = 7
     binary_input = True
     
     def _describe(self, binary, steps=None):
@@ -17,11 +17,14 @@ class HuMoments(Feature):
         central = measure.moments_central(clipped, cr, cc)
         normalized = measure.moments_normalized(central)
         moments = measure.moments_hu(normalized)
+        # nan determines, that moment could not be described, 
+        # but is hard to handle in prediction, set to zero instead
+        moments[np.isnan(moments)] = 0
         return moments 
 
 class ZernikeMoments(Feature):
     label = 'Zernike-Moments'
-    columns = list(np.arange(25))
+    dim = 25
     binary_input = True
     
     def _describe(self, binary, steps=None):
@@ -33,8 +36,7 @@ class ZernikeMoments(Feature):
                                     cv2.CHAIN_APPROX_SIMPLE)
         # no contours if binary is empty
         if len(contours) == 0:
-            self.values = np.zeros(len(self.columns))
-            return
+            return np.zeros(self.dim)
         # compute moments around center of binary
         center, radius = cv2.minEnclosingCircle(contours[0])
         moments = zernike_moments(binary, radius, cm=center)

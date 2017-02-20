@@ -172,46 +172,58 @@ class Leafvenation(Feature):
     label = 'Leaf Veins Sceleton'
     
     def _describe(self, image, steps=None):  
-        scaled = self._common_scale(image)
+        #scaled = self._common_scale(image)
         
-        gray = cv2.cvtColor(scaled, cv2.COLOR_BGR2GRAY)
-        gray[gray == 255] = 0
-        binary = np.clip(gray, 0, 1) * 255        
-        disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, 
-                                         (200, 200))     
-        binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, disk)
-        background_mask = binary == 0
-        # area of foreground in pixels
-        leaf_area = gray.size - background_mask.sum()
-        gabor_img = gabor(gray)        
-        gabor_img[background_mask] = 0     
-        #steps['gabor'] = gabor_img        
-        #binary = Binarize().process(gabor_img)  
-        #steps['binary'] = binary
+        #gray = cv2.cvtColor(scaled, cv2.COLOR_BGR2GRAY)
+        #gray[gray == 255] = 0
+        #binary = np.clip(gray, 0, 1) * 255        
+        #disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, 
+                                         #(200, 200))     
+        #binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, disk)
+        #background_mask = binary == 0
+        ## area of foreground in pixels
+        #leaf_area = gray.size - background_mask.sum()
+        #gabor_img = gabor(gray)        
+        #gabor_img[background_mask] = 0     
+        ##steps['gabor'] = gabor_img        
+        ##binary = Binarize().process(gabor_img)  
+        ##steps['binary'] = binary
         
-        def segment_veins(img, kernel_size):
-            disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, 
-                                             (kernel_size, kernel_size))
-            opened = cv2.morphologyEx(gabor_img, cv2.MORPH_CLOSE, disk)
-            veins = gabor_img - opened
-            veins[veins < 125] = 0
-            veins = np.clip(veins, 0, 1)
-            veins = 1 - veins 
-            veins[background_mask] = 0
-            return veins
+        #def segment_veins(img, kernel_size):
+            #disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, 
+                                             #(kernel_size, kernel_size))
+            #opened = cv2.morphologyEx(gabor_img, cv2.MORPH_CLOSE, disk)
+            #veins = gabor_img - opened
+            #veins[veins < 125] = 0
+            #veins = np.clip(veins, 0, 1)
+            #veins = 1 - veins 
+            #veins[background_mask] = 0
+            #return veins
         
-        histogram = []
-        for kernel_size in[10, 30, 50]:
-            veins = segment_veins(gabor_img, kernel_size)
-            if steps is not None:
-                # sometimes ui crashes when trying to make pixmap 
-                # -> imshow instead
-                #steps['{}'.format(i)] = veins*255
-                cv2.imshow('kernel {}'.format(kernel_size), veins * 255)
-            perc_veins = veins.sum() / leaf_area
-            histogram.append(perc_veins)
+        #histogram = []
+        #for kernel_size in[10, 30, 50]:
+            #veins = segment_veins(gabor_img, kernel_size)
+            #if steps is not None:
+                ## sometimes ui crashes when trying to make pixmap 
+                ## -> imshow instead
+                #steps['{}'.format(kernel_size)] = veins*255
+                ##cv2.imshow('kernel {}'.format(kernel_size), veins * 255)
+            #perc_veins = veins.sum() / leaf_area
+            #histogram.append(perc_veins)
         
-        return np.array(histogram)
+        #return np.array(histogram)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        background_mask = (gray == 255).astype(np.uint8) * 255
+        background_mask = cv2.GaussianBlur(background_mask, (0,0), 5)
+        background_mask = (background_mask != 0)
+        for sigma in [1, 2, 3]:
+            blurred = cv2.GaussianBlur(gray, (0,0), sigma)
+            canny = cv2.Canny(blurred, 0, 10)            
+            canny[background_mask] = 0
+            cv2.imshow('{}'.format(sigma), canny)
+        
+        #steps['canny'] = canny
+        return []
     
         
 class Haralick(Feature):

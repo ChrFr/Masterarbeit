@@ -63,7 +63,8 @@ class HDF5Pandas(Data):
         return names
     
     def get_feature_count(self, category, feature_type):
-        path = self.feature_path.format(category=category, feature=feature_type)
+        path = self.feature_path.format(category=category, 
+                                        feature=feature_type.__name__)
         if path not in self.store:
             return 0
         df = self.store[path]
@@ -105,7 +106,10 @@ class HDF5Pandas(Data):
                     feature_frame = self.store[table_path]
                 except: pass
             for feature in features_per_type:
-                values = feature.values
+                try:
+                    values = feature.values
+                except:
+                    continue
                 columns = feature.columns
                 if columns is None:
                     columns = np.arange(0, len(values))                    
@@ -121,7 +125,8 @@ class HDF5Pandas(Data):
                         feature_frame.loc[df.index] = df
                     else:
                         feature_frame = feature_frame.append(df)
-            self.store[table_path] = feature_frame
+            if feature_frame is not None:            
+                self.store[table_path] = feature_frame
         self.commit()
         
     def delete_category(self, category):
@@ -169,6 +174,8 @@ class HDF5Pandas(Data):
     def get_features(self, feature_type, categories=None):
         feature_frame = self._get_feature_frame(feature_type, 
                                                 categories=categories)
+        if feature_frame is None:
+            return None
         ids = feature_frame.index
         features = []
         for id in ids:

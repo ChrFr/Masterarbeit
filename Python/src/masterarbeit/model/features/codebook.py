@@ -1,5 +1,5 @@
-from sklearn.decomposition import (MiniBatchDictionaryLearning, SparseCoder,
-                                   PCA, DictionaryLearning)
+from sklearn.decomposition import (DictionaryLearning, SparseCoder,
+                                   PCA)
 from sklearn.preprocessing import normalize
 from sklearn.cluster import KMeans
 import numpy as np
@@ -15,31 +15,37 @@ class Codebook(metaclass=ABCMeta):
     def __init__(self, n_components, n_levels=1):
         self.n_components = n_components
         self.n_levels = n_levels
-        self.codebooks = []
+        self.codebooks = [[] for l in range(self.n_levels)]
         
     def fit(self, features):   
-        feature_values = [[] for l in range(self.n_levels)]
-        self.codebooks = []
+        level_values = [[] for l in range(self.n_levels)]
+        part_components = self._partition_components()
+        # each element of the computed values stands for a different level
+        # distribute the values to the matching codebook level
+        for feat in features:
+            values = feat.values
+            # if there is only one level, make a list (although no distribution
+            # is necessary)
+            if self.n_levels <= 1: 
+                values = [values]
+            for level, v in enumerate(values):
+                level_values[level] += list(v)
+        
+        for level, values in enumerate(level_values):
+            n_components = part_components[level]
+            codebook = self._fit(np.array(values), n_components)
+            self.codebooks[level] = codebook
+            
+    def _partition_components(self):
         # the later histogram (determined by n components of dictionary)
         # should have constant length, even if more levels are added 
         # -> partition it into n levels
         parts = int(self.n_components / self.n_levels)
         part_components = [parts] * (self.n_levels - 1)
-        # last level gets the remaining buckets
+        # last level gets the remaining bins
         part_components.append(self.n_components - 
                                parts * (self.n_levels - 1))
-        # distribute the values to the matching codebook level
-        for feat in features:
-            values = feat.values
-            if self.n_levels <= 1: 
-                values = [values]
-            for level, v in enumerate(values):
-                feature_values[level] += list(v)
-        
-        for level, values in enumerate(feature_values):
-            n_components = part_components[level]
-            codebook = self._fit(np.array(values), n_components)
-            self.codebooks.append(codebook)
+        return part_components
       
     def histogram(self, feature_values):
         '''
@@ -59,8 +65,10 @@ class Codebook(metaclass=ABCMeta):
         return histogram
         
     def deserialize(self, serialized):
-        for i in range(self.n_levels):
-            self.codebooks.append(self._deserialize(serialized[i]))
+        part_components = self._partition_components()
+        for level in range(self.n_levels):
+            self.codebooks[level] = self._deserialize(serialized[level], 
+                                                      part_components[level])
     
     def serialize(self): 
         serialized = []
@@ -77,7 +85,7 @@ class Codebook(metaclass=ABCMeta):
         pass
         
     @abstractmethod 
-    def _deserialize(self, serialized):
+    def _deserialize(self, serialized, n_components):
         pass
     
     @abstractmethod 
@@ -99,9 +107,9 @@ class DictLearningCodebook(Codebook):
     def _fit(self, feature_values, n_components):   
         # reshape to two dimensional vector (list of 1d features)
         feature_vector = feature_values.reshape(feature_values.shape[0], -1)         
-        minibatch = MiniBatchDictionaryLearning(n_components=n_components, 
-                                                alpha=1, n_iter=500)
-        codebook = minibatch.fit(feature_vector)
+        dictionary = DictionaryLearning(n_components=n_components, 
+                                        alpha=1, max_iter=500)
+        codebook = dictionary.fit(feature_vector)
         return codebook     
         
     def _histogram(self, codebook, feature_vector):
@@ -112,8 +120,8 @@ class DictLearningCodebook(Codebook):
         norm_hist = normalize(histogram.reshape(1,-1))[0]
         return norm_hist
             
-    def _deserialize(self, serialized):
-        components = serialized.reshape(self.n_components, -1)
+    def _deserialize(self, serialized, n_components):
+        components = serialized.reshape(n_components, -1)
         # use coder instead of dictionary, performance wise
         coder = SparseCoder(components)  
         return coder
@@ -136,7 +144,7 @@ class KMeansCodebook(Codebook):
                           n_init=1).fit(feature_vector)
         return codebook
         
-    def _deserialize(self, serialized):
+    def _deserialize(self, serialized, n_components):
         serialized = serialized[0]
         codebook = pickle.loads(serialized)
         return codebook

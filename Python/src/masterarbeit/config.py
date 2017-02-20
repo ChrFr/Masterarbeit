@@ -21,7 +21,7 @@ SEGMENTATION = (pocv.Binarize, psk.BinarizeHSV,
                 pocv.KMeansBinarize, pocv.KMeansHSVBinarize)
 FEATURES = (HuMoments, ZernikeMoments, Borders, IDSCKMeans, IDSCDict,
             IDSCGaussiansKMeans, IDSCGaussiansDict, Sift, SiftPatch, LocalBinaryPattern, LocalBinaryPatternCenterPatch, Leafvenation, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Surf, SurfPatch, LocalBinaryPatternKMeans)
-CLASSIFIERS = (ComplexMLP, SimpleMLP)
+CLASSIFIERS = (ComplexMLP, SimpleMLP, SVM)
 DATA = [HDF5Pandas]
 
 file_path = os.path.split(__file__)[0]

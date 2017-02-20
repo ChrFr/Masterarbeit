@@ -53,9 +53,7 @@ class Classifier(metaclass=ABCMeta):
         '''
         pass
     
-    def predict(self, features):        
-        if feat._v is None:
-            return None
+    def predict(self, features):      
         #if feat_type not in self.trained_feature_types
         values = np.array([feat.values for feat in features])    
         classes = self._predict(values)

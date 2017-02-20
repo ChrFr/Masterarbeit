@@ -1,5 +1,7 @@
 from masterarbeit.model.classifiers.classifier import Classifier
+from masterarbeit.model.backend.data import load_class, class_to_string
 from sklearn.svm import LinearSVC
+import pickle
 
 class SVM(Classifier):   
     
@@ -23,3 +25,13 @@ class SVM(Classifier):
     def _predict(self, values):
         classes = self.model.predict(values)
         return classes
+    
+    def serialize(self):
+        pickled = pickle.dumps(self.model)
+        trained_features = [class_to_string(ft) for ft in self.trained_features]
+        return [[pickled], trained_features, self.trained_categories]
+    
+    def deserialize(self, serialized):
+        self.model = pickle.loads(serialized[0][0])
+        self.trained_features = [load_class(ft) for ft in serialized[1]]
+        self.trained_categories = serialized[2] 
