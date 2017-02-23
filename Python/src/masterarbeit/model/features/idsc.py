@@ -7,6 +7,7 @@ import itertools
 import math
 from scipy.sparse.csgraph import floyd_warshall
 from sklearn.preprocessing import normalize
+from skimage.draw import line as skline
 
 from masterarbeit.model.features.feature import UnsupervisedFeature
 from masterarbeit.model.segmentation.helpers import simple_binarize
@@ -15,26 +16,15 @@ from masterarbeit.model.features.codebook import (DictLearningCodebook,
 distance = euclidean
 shortest_path = floyd_warshall
 
-def get_points_on_line(p1, p2, n=10):
-    points = np.zeros((n, 2))
-    x = np.linspace(p1[0], p2[0], n).astype(np.int)
-    y = np.linspace(p1[1], p2[1], n).astype(np.int)
-    points[:, 0] = x
-    points[:, 1] = y
-    ## take unique points only
-    #points_on_line = []    
-    #for i in range(1, n):
-        #if (points[i] == points[i-1]).sum() < 2:
-            #points_on_line.append(points[i])        
-    return points
+def get_points_on_line(p1, p2):   
+    x, y = skline(p1[0], p1[1], p2[0], p2[1])
+    return x, y
 
 class IDSC(UnsupervisedFeature):
     '''
-    subclass this, no dictionary and histo length defined
     '''    
     label = 'Inner Distance Shape Context'
-    codebook_type = None
-    histogram_length = None
+    histogram_length = 100
     n_contour_points = 300
     n_angle_bins = 8
     n_distance_bins = 8
@@ -87,24 +77,23 @@ class IDSC(UnsupervisedFeature):
         # fill the distance matrix pairwise
         for i, p1 in enumerate(contour_points):
             for j, p2 in enumerate(contour_points[i+1:]):
-                line_points = get_points_on_line(p1, p2, 10)
-                # check, if all points in between are inside shape (indicated 
-                # by binary pixels, where row is y and column is x)
-                for point in line_points:
-                    if binary[int(point[1]), int(point[0])] == 0:
-                        break 
-                # no break -> all points in between are inside the shape
-                else:
-                    # if all points on line in shape -> calculate distance 
-                    # and store in matrix (mirrored)
-                    dist = distance(p1, p2)
-                    # ignore distances beyond the defined maximum 
-                    # (extension for gauss pyramid IDSC, can never be ful-
-                    # filled in normal IDSC)
-                    if dist > self.max_distance:
-                        break
-                    dist_matrix[j + i, i] = dist
-                    dist_matrix[i, j + i] = dist
+                lx, ly = get_points_on_line(p1, p2)
+                # check, if all points in between are inside shape (shape 
+                # is encoded with 1, background 0)
+                values = binary[ly, lx] # row in image is y and column is x
+                inside_shape = np.count_nonzero(values) == len(values)
+                if not inside_shape: 
+                    continue
+                # if all points on line are within shape -> calculate distance                
+                dist = distance(p1, p2)
+                # ignore distances beyond the defined maximum 
+                # (extension for gauss pyramid IDSC, can never be ful-
+                # filled in normal IDSC)
+                if dist > self.max_distance:
+                    break
+                # store distance in matrix (mirrored)
+                dist_matrix[j + i, i] = dist
+                dist_matrix[i, j + i] = dist
         return dist_matrix
         
     def _build_shape_context(self, distance_matrix, contour_points, 
@@ -160,11 +149,11 @@ class IDSC(UnsupervisedFeature):
         return np.array(histogram)    
     
     
-class IDSCGaussians(IDSC):
+class MultilevelIDSC(IDSC):
     '''
-    subclass this, no dictionary attached
     '''
     label = 'Gaussian Inner Distance Shape Context'
+    histogram_length = 150
     # points to take per level, from finest to coarsest (up the pyramid)
     n_contour_points = [400, 200, 40]
     tau = 4
@@ -224,7 +213,7 @@ class IDSCGaussians(IDSC):
                 context = self._build_shape_context(
                     dist_matrix, contour_points, 
                     skip_distant_points=skip_distant_points)  
-                
+            
             level_contexts.append(context)
             
             ### Visualisation of gauss levels ###
@@ -242,40 +231,5 @@ class IDSCGaussians(IDSC):
                 cv2.circle(img, tuple(p), int(self.max_distance), 
                            thickness=20, color=(255, 0, 0))                
                 steps['pyramid {}'.format(level)] = img
-                
+
         return level_contexts
-
-        
-### the callable classes with defined codebook types ###
-    
-class IDSCKMeans(IDSC):
-    codebook_type = KMeansCodebook
-    histogram_length = 100
-    columns = np.arange(0, histogram_length).astype(np.str)
-    
-    
-class IDSCDict(IDSC):
-    codebook_type = DictLearningCodebook
-    histogram_length = 100
-    columns = np.arange(0, histogram_length).astype(np.str)
-    
-
-class IDSCGaussiansKMeans(IDSCGaussians):
-    label = 'Gaussian Inner Distance Shape Context'
-    histogram_length = 150
-    codebook_type = KMeansCodebook
-    columns = np.arange(0, histogram_length).astype(np.str)
-
-
-class IDSCGaussiansDict(IDSCGaussians):
-    label = 'Gaussian Inner Distance Shape Context'
-    histogram_length = 150
-    codebook_type = DictLearningCodebook
-    columns = np.arange(0, histogram_length).astype(np.str)
-    
-#class IDSCPolyKMeans(IDSCPoly):
-    #label = 'Polygon Inner Distance Shape Context'
-    #histogram_length = 100
-    #codebook_type = DictLearningCodebook
-    #columns = np.arange(0, histogram_length).astype(np.str)
-    
