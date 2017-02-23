@@ -27,6 +27,10 @@ class Feature(metaclass=ABCMeta):
         scaled = cv2.resize(image, (new_shape[1], new_shape[0]))
         return scaled    
     
+    @property
+    def is_described(self):
+        return self._v is not None
+    
     @property    
     def values(self):
         if self._v is None:
@@ -35,12 +39,7 @@ class Feature(metaclass=ABCMeta):
     
     @values.setter    
     def values(self, values):
-        values = values.flatten()        
-        if self.columns is not None and len(values) != len(self.columns):
-            raise Exception('expected length of feature mismatches ' +
-                            'length of extracted values! ({}!={})'.format(
-                                len(self.columns), len(values)
-                            ))
+        values = values.flatten()     
         self._v = values
         
     def describe(self, segmented_image, steps=None):
@@ -58,19 +57,18 @@ class Feature(metaclass=ABCMeta):
     
 class UnsupervisedFeature(Feature):
     n_levels = 1
-    codebook_type = None
     histogram_length = 50
     
-    @classmethod
-    def new_codebook(cls):
-        codebook = cls.codebook_type(cls.histogram_length, 
-                                     n_levels=cls.n_levels)
-        return codebook
+    @property
+    def data_is_analysed(self):
+        return (self.is_described and 
+                len(self._v.shape) == 1 and 
+                type(self._v) != np.ndarray)      
         
     def __init__(self, category, id=None):
         super(UnsupervisedFeature, self).__init__(category, id=id)
         
-    def histogram(self, codebook):
+    def transform(self, codebook):
         if not isinstance(codebook, self.codebook_type):
             raise Exception('Feature requires {} to build an histogram'
                             .format(self.codebook_type.__name__))

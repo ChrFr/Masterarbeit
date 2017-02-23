@@ -12,9 +12,9 @@ class Codebook(metaclass=ABCMeta):
     # each level gets a codebook itself
     n_levels = 1
     
-    def __init__(self, n_components, n_levels=1):
-        self.n_components = n_components
-        self.n_levels = n_levels
+    def __init__(self, feature_type):
+        self.n_components = feature_type.histogram_length
+        self.n_levels = feature_type.n_levels
         self.codebooks = [[] for l in range(self.n_levels)]
         
     def fit(self, features):   
@@ -47,7 +47,7 @@ class Codebook(metaclass=ABCMeta):
                                parts * (self.n_levels - 1))
         return part_components
       
-    def histogram(self, feature_values):
+    def transform(self, feature_values):
         '''
         histo from level 1 to level n (as in feature)
         equally distributed
@@ -61,7 +61,7 @@ class Codebook(metaclass=ABCMeta):
             values = feature_values[level]
             feature_vector = values.reshape(values.shape[0], -1)             
             histogram = np.concatenate(
-                (histogram, self._histogram(codebook, feature_vector)))
+                (histogram, self._transform(codebook, feature_vector)))
         return histogram
         
     def deserialize(self, serialized):
@@ -81,7 +81,7 @@ class Codebook(metaclass=ABCMeta):
         pass
     
     @abstractmethod    
-    def _histogram(self, codebook, feature_vector):
+    def _transform(self, codebook, feature_vector):
         pass
         
     @abstractmethod 
@@ -120,7 +120,7 @@ class DictLearningCodebook(Codebook):
         norm_hist = normalize(histogram.reshape(1,-1))[0]
         return norm_hist
             
-    def _deserialize(self, serialized, n_components):
+    def _transform(self, serialized, n_components):
         components = serialized.reshape(n_components, -1)
         # use coder instead of dictionary, performance wise
         coder = SparseCoder(components)  
@@ -153,7 +153,7 @@ class KMeansCodebook(Codebook):
         serialized = pickle.dumps(codebook)
         return np.array([serialized])
     
-    def _histogram(self, codebook, feature_vector):
+    def _transform(self, codebook, feature_vector):
         prediction = codebook.predict(feature_vector)
         # which patterns appear how often?
         patterns, pattern_count = np.unique(prediction, return_counts=True)        

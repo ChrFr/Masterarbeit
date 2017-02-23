@@ -30,12 +30,15 @@ class HDF5Pandas(Data):
     serialized_model_attr = 'classifier_serialized'
     feature_base_path = 'features'
     model_base_path = 'models'
-    dictionary_base_path = 'dictionaries'
+    codebook_base_path = 'dictionaries' 
     category_path = feature_base_path + '/{category}'
-    feature_path = category_path + '/{feature}'
-    codebook_path = dictionary_base_path + '/{feature}'
+    feature_path = category_path + '/{feature}'       
+    codebook_feature_path = codebook_base_path + '/{feature}'
+    codebook_path = codebook_feature_path + '/{codebook}'
     model_path = model_base_path + '/{model}/{name}'
+    
     date_column = 'datetime'
+    multi_dim_column = 'multi_dim_data'
     
     def __init__(self):
         self.store = None
@@ -91,7 +94,7 @@ class HDF5Pandas(Data):
             self._add_features_to_category(features[idx], category, 
                                            replace=replace)        
         
-    def _add_features_to_category(self, features, category, replace=False):        
+    def _add_features_to_category(self, features, category, replace=False):
         now = datetime.datetime.now().strftime(DATETIME_FORMAT)    
         feat_types = np.array([type(f).__name__ for f in features])  
         unique_feat = np.unique(feat_types)
@@ -106,14 +109,23 @@ class HDF5Pandas(Data):
                     feature_frame = self.store[table_path]
                 except: pass
             for feature in features_per_type:
+                # continue, if not described yet
                 try:
-                    values = feature.values
+                    values = np.array(feature.values)
                 except:
+                    print('Warning: feature contains no data!')
                     continue
-                columns = feature.columns
-                if columns is None:
-                    columns = np.arange(0, len(values))                    
-                df = pd.DataFrame([values], columns=columns)
+                # store multidimensional data in single column (pickled)
+                if type(values) == np.ndarray or len(values.shape) > 1:
+                    pickled = pickle.dumps(values)
+                    df = pd.DataFrame([pickled], 
+                                      columns=[self.multi_dim_column])
+                # only 1 dimension -> store data as np datatype in cols (faster)
+                else:
+                    columns = feature.columns                
+                    if columns is None:
+                        columns = np.arange(0, len(values))                    
+                    df = pd.DataFrame([values], columns=columns)                    
                 df[self.date_column] = now   
                 df['id'] = feature.id
                 df = df.set_index('id')
@@ -182,7 +194,10 @@ class HDF5Pandas(Data):
             r = feature_frame.loc[id]
             category = r['category']
             del r['category']
-            values = np.array([v for v in r])
+            if self.multi_dim_column in feature_frame.columns:
+                values = pickle.loads(r[self.multi_dim_column])
+            else:
+                values = np.array([v for v in r])
             feature = feature_type(category, id=id)  
             feature.values = values
             features.append(feature)
@@ -255,8 +270,8 @@ class HDF5Pandas(Data):
             
     def get_classifiers(self):
         classifiers = {}
-        # use pytables, because models were not saved as dataframes, 
-        # so pandas ignore them
+        # use pytables, because keras models were not saved as dataframes, 
+        # so pandas doesn't find them
         store = tables.open_file(self.source, mode='a')
         try:
             for g in store.list_nodes(self.root + self.model_base_path):
@@ -331,13 +346,15 @@ class HDF5Pandas(Data):
         store.close() 
                 
     def save_codebook(self, codebook, feature_type):
-        table_path = self.codebook_path.format(feature=feature_type.__name__)  
+        table_path = self.codebook_path.format(
+            feature=feature_type.__name__, codebook = type(codebook).__name__)  
         # ToDo: store seperately, because this may cause mixin objects
         self.store[table_path] = pd.DataFrame(codebook.serialize())
         self.commit()
         
-    def get_codebook(self, feature_type):
-        table_path = self.codebook_path.format(feature=feature_type.__name__) 
+    def get_codebook(self, feature_type, codebook_type):
+        table_path = self.codebook_path.format(
+            feature=feature_type.__name__, codebook = codebook_type.__name__)  
         if table_path not in self.store:
             return None
         df = self.store.get(table_path)
@@ -345,6 +362,14 @@ class HDF5Pandas(Data):
         codebook = feature_type.new_codebook()
         codebook.deserialize(serialized)
         return codebook
+    
+    def get_codebooks(self, feature_type):
+        codebooks = []
+        path = self.codebook_feature_path.format(feature=feature_type.__name__)
+        for key in self.store.keys():
+            if key.startswith(self.root + path + '/'):
+                codebooks.append(os.path.split(key)[1])
+        return codebooks
     
     def _copy_group(self, in_store, in_group, out_store, out_group, keep_group=True): 
         '''

@@ -6,12 +6,11 @@ from masterarbeit.model.segmentation import segmentation_skimage as psk
 from masterarbeit.model.features.moments import ZernikeMoments, HuMoments
 from masterarbeit.model.features.texture import Sift, SiftPatch, LocalBinaryPattern, LocalBinaryPatternCenterPatch, Leafvenation, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Surf, SurfPatch, LocalBinaryPatternKMeans
 from masterarbeit.model.features.borders import Borders
-from masterarbeit.model.features.idsc import (IDSCKMeans, IDSCDict, 
-                                              IDSCGaussiansKMeans,
-                                              IDSCGaussiansDict)
+from masterarbeit.model.features.idsc import (IDSC, MultilevelIDSC)
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
 from masterarbeit.model.classifiers.mlp import ComplexMLP, SimpleMLP
 from masterarbeit.model.classifiers.svm import SVM
+from masterarbeit.model.features.codebook import KMeansCodebook, DictionaryLearning
 
 IMAGE_FILTER = 'Images (*.png, *.jpg)'
 ALL_FILES_FILTER = 'All Files(*.*)'
@@ -19,8 +18,9 @@ HDF5_FILTER = 'HDF5 (*.h5)'
 
 SEGMENTATION = (pocv.Binarize, psk.BinarizeHSV, 
                 pocv.KMeansBinarize, pocv.KMeansHSVBinarize)
-FEATURES = (HuMoments, ZernikeMoments, Borders, IDSCKMeans, IDSCDict,
-            IDSCGaussiansKMeans, IDSCGaussiansDict, Sift, SiftPatch, LocalBinaryPattern, LocalBinaryPatternCenterPatch, Leafvenation, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Surf, SurfPatch, LocalBinaryPatternKMeans)
+FEATURES = (HuMoments, ZernikeMoments, Borders, 
+            MultilevelIDSC, IDSC, Sift, SiftPatch, LocalBinaryPattern, LocalBinaryPatternCenterPatch, Leafvenation, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Surf, SurfPatch, LocalBinaryPatternKMeans)
+CODEBOOKS = (KMeansCodebook, DictionaryLearning)
 CLASSIFIERS = (ComplexMLP, SimpleMLP, SVM)
 DATA = [HDF5Pandas]
 

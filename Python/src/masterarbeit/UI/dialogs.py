@@ -353,9 +353,7 @@ class BatchFeatureDialog(QDialog, Ui_FeatureDialog):
         
         # available features
         for feature_type in FEATURES:            
-            label = feature_type.label
-            if issubclass(feature_type, UnsupervisedFeature):
-                label += ' ({})'.format(feature_type.codebook_type.__name__)            
+            label = feature_type.label          
             item = QListWidgetItem(self.features_list)
             checkbox = QCheckBox(label)
             if feature_type in self.preselected:
@@ -576,6 +574,40 @@ class SelectSpeciesDialog(QDialog):
         result = dialog.exec_()
         selection = dialog.species_combo.currentText()   
         return selection, result == QDialog.Accepted
+    
+class SelectionDialog(QDialog):
+    def __init__(self, options, data, label, title, parent):
+        super(SelectionDialog, self).__init__(parent=parent)
+        self.setWindowTitle(title)
+        layout = QVBoxLayout(self)
+        label = QLabel(label, self)
+
+        self.combo = QComboBox(self)
+        self.combo.setMinimumWidth(300)
+        for i, o in enumerate(options):
+            d = None
+            if data is not None:
+                d = data[i]
+            self.combo.addItem(s, d)            
+        
+        buttons = QDialogButtonBox(
+            QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
+        buttons.accepted.connect(self.accept)
+        buttons.rejected.connect(self.reject)
+        layout.addWidget(label)
+        layout.addWidget(self.combo)
+        layout.addWidget(buttons)        
+                    
+
+    # static method to create the dialog and return (date, time, accepted)
+    @staticmethod
+    def get_selection(options, data=None, label='select', 
+                      title='select', parent=None):
+        dialog = SelectionDialog(options, data, label, title, parent)
+        result = dialog.exec_()
+        selection = dialog.combo.currentText()
+        data = dialog.combo.currentData()
+        return selection, result == QDialog.Accepted
         
 class ExtractFeatureThread(ProgressThread):
     
@@ -600,7 +632,7 @@ class ExtractFeatureThread(ProgressThread):
         self.status.emit('<b>Extracting features from {} '.format(file_count) +
                          'files...</b><br>', 0)
         
-        feat_codebook_dict = self.get_codebook_dict()  
+        feat_codebook_dict = self.get_codebook_dict() if self.build_codebook else {}
         text = ''
         for species, files in self.files.items():
             features_per_species = []   
@@ -635,7 +667,7 @@ class ExtractFeatureThread(ProgressThread):
                             text = '{feature} extracted from <i>{file}</i>'          
                             if feat_type in feat_codebook_dict:
                                 codebook = feat_codebook_dict[feat_type]
-                                feat.histogram(codebook)                                
+                                feat.transform(codebook)                                
                             features_per_species.append(feat)                                
                         text = text.format(feature=feat.label, file=input_file)     
                         self.status.emit(text, progress)                                    

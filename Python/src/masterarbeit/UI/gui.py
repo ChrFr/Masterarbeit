@@ -16,13 +16,14 @@ from matplotlib import pyplot as plt
 from masterarbeit.UI.main_window_ui import Ui_MainWindow
 from masterarbeit.config import Config
 from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
-from masterarbeit.config import (SEGMENTATION, FEATURES, CLASSIFIERS)
+from masterarbeit.config import (SEGMENTATION, FEATURES, CLASSIFIERS,
+                                 CODEBOOKS)
 from masterarbeit.model.segmentation.helpers import (read_image, remove_thin_objects)
 from masterarbeit.UI.imageview import ImageViewer
 from masterarbeit.model.features.plot import pairplot
 from masterarbeit.UI.dialogs import (CropDialog, ExtractFeatureDialog, 
                                      BuildDictionaryDialog,
-                                     SettingsDialog,
+                                     SettingsDialog, SelectionDialog,
                                      browse_file, WaitDialog, 
                                      FunctionProgressDialog, error_message)
 
@@ -115,8 +116,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
         for feature_type in FEATURES:
             label = feature_type.label
-            if issubclass(feature_type, UnsupervisedFeature):
-                label += ' ({})'.format(feature_type.codebook_type.__name__)
             self.feature_combo.addItem(label, feature_type)  
         self.feature_steps_combo.currentIndexChanged.connect(
             lambda index: on_image_selected(index, self.feature_view,
@@ -132,6 +131,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             os.path.split(config.source)[1])
         self.store_label.setText(store_txt)
         self.update_species_table()
+        self.update_feature_table()
+        self.update_trained_classifiers()
 
     def load_source_image(self, filename):
         if not filename:
@@ -209,13 +210,12 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.train_button.pressed.connect(self.train)
         
         self.add_features_button.pressed.connect(lambda: self.multi_extract(
-            self.get_checked_features()))      
+            self.get_checked_features()))              
         
-        def build_dict():
-            BuildDictionaryDialog(preselected=self.get_checked_features(), 
-                                  parent=self).exec_()
-            self.update_feature_table()
-        self.build_dict_button.pressed.connect(build_dict)
+        for codebook in CODEBOOKS:
+            self.codebook_build_combo.addItem(codebook.__name__, codebook)
+        self.train_button.pressed.connect(self.train)        
+        self.build_dict_button.pressed.connect(self.build_codebook)
         
     def setup_prediction_tab(self):
         self.update_trained_classifiers()
@@ -268,7 +268,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 if not success:
                     print('failure while extracting features from {}'.format(file))
                 elif isinstance(feature, UnsupervisedFeature):
-                    feature.histogram(codebook)
+                    feature.transform(codebook)
                 features.append(feature)
         predictions = self.pred_classifier.predict(features)
         for row, pred in enumerate(predictions):
@@ -295,25 +295,72 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             img_item = QTableWidgetItem(image)
             self.prediction_table.setItem(row , 0, img_item) 
             
+    def build_codebook(self):
+        if self.dict_images_radio.isChecked():
+            BuildDictionaryDialog(preselected=self.get_checked_features(), 
+                                  parent=self).exec_()
+        elif self.dict_features_radio.isChecked():        
+            
+            feat_types = self.get_checked_features()
+            species = self.get_checked_species()
+            codebook_type = self.codebook_build_combo.currentData()            
+            
+            def build_from_store():
+                for feat_type in feat_types:
+                    codebook = codebook_type(feat_type)
+                    features = self.store.get_features(feat_type, 
+                                                       categories=species)
+                    print('building {} for {} from {} features...'.format(
+                        codebook_type.__name__, feat_type.label, len(features)))
+                    codebook.fit(features)
+                    self.store.save_codebook(codebook, feat_type)
+                    print('codebook built and stored')
+                    
+            FunctionProgressDialog(build_from_store, parent=self).exec_()
+        self.update_feature_table()
+            
     def train(self):
         feat_types = self.get_checked_features()
         species = self.get_checked_species()
         if len(species) == 0 or len(feat_types) == 0:
             return
         
-        name, ok = QInputDialog.getText(self, 'Classifier', 
-                                        'set name of classifier')
-        if not name or not ok:         
-            return
-        cls = self.classifier_training_combo.currentData()        
-        classifier = cls(name)    
+         
         feat_type = feat_types[0]
         if len(feat_types) == 0 or len(species) == 0:
             return
         input_dim = len(feat_type.columns)
         features = self.store.get_features(feat_type, categories=species)
+        ready_features = []
+        raw_features = []
+        for feature in features:
+            if (isinstance(feature, UnsupervisedFeature) and
+                not feature.data_is_analysed):
+                raw_features.append(feature)
+            else:
+                ready_features.append(feature)                
+        
+        if len(raw_features) > 0:
+            options = [c.__name__ for c in CODEBOOKS]
+            sel, codebook, accepted = SelectionDialog.get_selection(
+                options, data=None, label='select a codebook', 
+                title='Codebook', parent=None)
+            if not accepted:
+                return
+            
+        name, ok = QInputDialog.getText(self, 'Classifier', 
+                                    'set name of classifier')
+        if not name or not ok:         
+            return
+        cls = self.classifier_training_combo.currentData()        
+        classifier = cls(name)   
         
         def train_and_save():
+            if len(raw_features) > 0:                
+                print('transforming raw features with codebook')
+                for feature in raw_features:
+                    feature.transform(codebook)
+                    ready_features.append(feature)
             print('training classifier...')
             classifier.train(features)
             print('classifier trained')
@@ -409,13 +456,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             feat_item.setCheckState(False)
             b_color = Qt.QColor(255, 255, 255) 
             if issubclass(feature_type, UnsupervisedFeature):
-                dict_label = '{}'.format(feature_type.codebook_type.__name__)
-                if self.store.get_codebook(feature_type) is None:
-                    dict_label += ' not built yet'
+                codebooks = self.store.get_codebooks(feature_type)
+                if len(codebooks) == 0:                    
+                    dict_label = 'dictionary required, but none found'
                     b_color = Qt.QColor(255, 230, 230)
                 else:
-                    dict_label += ' is built'
-                    b_color = Qt.QColor(230, 255, 230)
+                    dict_label = ' | '.join(codebooks)                    
+                    b_color = Qt.QColor(230, 255, 230)      
             else:
                 dict_label = 'no dictionary needed'
                        
@@ -443,8 +490,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             for feature_type in FEATURES:
                 feat_count = self.store.get_feature_count(species, feature_type)
                 label = feature_type.label
-                if issubclass(feature_type, UnsupervisedFeature):
-                    label += ' ({})'.format(feature_type.codebook_type.__name__)
                 feat_txt = '{}: {}'.format(label, feat_count)
                 feat_txts.append(feat_txt)
                 if feat_count > 0:
@@ -519,7 +564,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                                   parent=self)
                     return False
                 else:
-                    feature.histogram(codebook)                    
+                    feature.transform(codebook)                    
             return True        
                 
         def plot():
