@@ -3,6 +3,8 @@ from abc import ABCMeta
 from abc import abstractmethod
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
+from masterarbeit.model.features.feature import UnsupervisedFeature
+from masterarbeit.model.backend.data import load_class, class_to_string
 
 class Classifier(metaclass=ABCMeta):       
     label = 'None'
@@ -20,15 +22,19 @@ class Classifier(metaclass=ABCMeta):
         pass
           
     def train(self, features):
-        categories, values, feat_types = zip(*[(f.category, f.values,
-                                                type(f)) for f in features]) 
+        
+        categories, values, feat_types, codebook_types = zip(
+            *[(f.category, f.values, type(f), 
+               f.codebook_type if hasattr(f, 'codebook_type') else None) 
+              for f in features]) 
         feat_types = np.array(feat_types)
+        codebook_types = np.array(codebook_types)
         u, idx = np.unique(feat_types.astype(str), 
                            return_index=True)
         unique_types = feat_types[idx]
-        if len(unique_types) > 1:
-            raise Exceptions('MLP may only be trained with one type of feature')
-        self.trained_features = unique_types
+        
+        codebooks_used = codebook_types[idx]
+        self.trained_features = dict(zip(unique_types, codebook_types))
         
         # returned index serves as an integer representation of the category 
         # with SAME order of the unique categories (important for 
@@ -53,7 +59,7 @@ class Classifier(metaclass=ABCMeta):
         '''
         pass
     
-    def predict(self, features):      
+    def predict(self, features):    
         #if feat_type not in self.trained_feature_types
         values = np.array([feat.values for feat in features])    
         classes = self._predict(values)
@@ -79,7 +85,20 @@ class Classifier(metaclass=ABCMeta):
         real_cat = unique_cat[test_classes]
         predicted_cat = unique_cat[predicted_classes]  
         accuracy = accuracy_score(real_cat, predicted_cat)
-        return real_cat, predicted_cat, accuracy
+        return real_cat, predicted_cat, accuracy    
+    
+    def serialize(self):
+        trained_features = [class_to_string(ft)
+                            for ft in self.trained_features.keys()]
+        codebooks_used = [class_to_string(c) 
+                          for c in self.trained_features.values()]
+        return [trained_features, codebooks_used, self.trained_categories]
+    
+    def deserialize(self, serialized):
+        trained_features = [load_class(ft) for ft in serialized[0]]
+        codebooks_used = [load_class(c) for c in serialized[1]]
+        self.trained_features = dict(zip(trained_features, codebooks_used))
+        self.trained_categories = serialized[2]     
             
     @abstractmethod        
     def _predict(self, values):

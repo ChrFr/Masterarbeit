@@ -576,7 +576,7 @@ class SelectSpeciesDialog(QDialog):
         return selection, result == QDialog.Accepted
     
 class SelectionDialog(QDialog):
-    def __init__(self, options, data, label, title, parent):
+    def __init__(self, options, label, title, parent):
         super(SelectionDialog, self).__init__(parent=parent)
         self.setWindowTitle(title)
         layout = QVBoxLayout(self)
@@ -584,11 +584,8 @@ class SelectionDialog(QDialog):
 
         self.combo = QComboBox(self)
         self.combo.setMinimumWidth(300)
-        for i, o in enumerate(options):
-            d = None
-            if data is not None:
-                d = data[i]
-            self.combo.addItem(s, d)            
+        for opt, data in options:
+            self.combo.addItem(opt, data)            
         
         buttons = QDialogButtonBox(
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel, self)
@@ -601,13 +598,13 @@ class SelectionDialog(QDialog):
 
     # static method to create the dialog and return (date, time, accepted)
     @staticmethod
-    def get_selection(options, data=None, label='select', 
+    def get_selection(options, label='select', 
                       title='select', parent=None):
-        dialog = SelectionDialog(options, data, label, title, parent)
+        dialog = SelectionDialog(options, label, title, parent)
         result = dialog.exec_()
         selection = dialog.combo.currentText()
         data = dialog.combo.currentData()
-        return selection, result == QDialog.Accepted
+        return selection, data, result == QDialog.Accepted
         
 class ExtractFeatureThread(ProgressThread):
     

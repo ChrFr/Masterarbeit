@@ -67,12 +67,14 @@ class UnsupervisedFeature(Feature):
         
     def __init__(self, category, id=None):
         super(UnsupervisedFeature, self).__init__(category, id=id)
+        self.codebook_type = None
         
     def transform(self, codebook):
-        if not isinstance(codebook, self.codebook_type):
-            raise Exception('Feature requires {} to build an histogram'
-                            .format(self.codebook_type.__name__))
-        self._v = codebook.histogram(self.values) 
+        #if not isinstance(codebook, self.codebook_type):
+            #raise Exception('Feature requires {} to build a histogram'
+                            #.format(self.codebook_type.__name__))
+        self.codebook_type = type(codebook)
+        self._v = codebook.transform(self.values) 
                 
 
 class JoinedFeature(Feature):

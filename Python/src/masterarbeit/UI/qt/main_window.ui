@@ -771,35 +771,43 @@
            </size>
           </property>
           <property name="title">
-           <string>Build Codebook</string>
+           <string>Codebook</string>
           </property>
           <layout class="QVBoxLayout" name="verticalLayout_3">
            <item>
-            <widget class="QComboBox" name="codebook_build_combo"/>
+            <widget class="QComboBox" name="codebook_combo"/>
            </item>
            <item>
-            <widget class="QRadioButton" name="dict_images_radio">
-             <property name="text">
-              <string>from images</string>
-             </property>
-             <property name="checked">
-              <bool>true</bool>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QRadioButton" name="dict_features_radio">
-             <property name="text">
-              <string>from selected stored features</string>
-             </property>
-            </widget>
-           </item>
-           <item>
-            <widget class="QPushButton" name="build_dict_button">
-             <property name="text">
-              <string>Build</string>
-             </property>
-            </widget>
+            <layout class="QHBoxLayout" name="horizontalLayout_4">
+             <item>
+              <layout class="QVBoxLayout" name="verticalLayout_4">
+               <item>
+                <widget class="QRadioButton" name="dict_images_radio">
+                 <property name="text">
+                  <string>from images</string>
+                 </property>
+                 <property name="checked">
+                  <bool>true</bool>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QRadioButton" name="dict_features_radio">
+                 <property name="text">
+                  <string>from selected stored features</string>
+                 </property>
+                </widget>
+               </item>
+              </layout>
+             </item>
+             <item>
+              <widget class="QPushButton" name="build_dict_button">
+               <property name="text">
+                <string>Build</string>
+               </property>
+              </widget>
+             </item>
+            </layout>
            </item>
           </layout>
          </widget>

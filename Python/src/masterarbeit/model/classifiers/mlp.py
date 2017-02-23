@@ -10,7 +10,6 @@ import pickle
 
 from masterarbeit.model.classifiers.classifier import Classifier
 from masterarbeit.model.features.common import features_to_dataframe
-from masterarbeit.model.backend.data import load_class, class_to_string
 
 class MLP(Classifier):   
     label = 'Multilayer Perceptron'
@@ -36,15 +35,7 @@ class MLP(Classifier):
         predictions = self.model.predict(values, batch_size=16)   
         classes = np_utils.probas_to_classes(predictions)
         return classes
-    
-    def serialize(self):
-        trained_features = [class_to_string(ft) for ft in self.trained_features]
-        return [trained_features, self.trained_categories]
-    
-    def deserialize(self, serialized):
-        self.trained_features = [load_class(ft) for ft in serialized[0]]
-        self.trained_categories = serialized[1]
-        
+           
         
 class ComplexMLP(MLP):
     label = 'Multilayer Perceptron 64x64'

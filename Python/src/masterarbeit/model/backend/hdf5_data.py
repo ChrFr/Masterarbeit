@@ -359,7 +359,7 @@ class HDF5Pandas(Data):
             return None
         df = self.store.get(table_path)
         serialized = df.as_matrix()
-        codebook = feature_type.new_codebook()
+        codebook = codebook_type(feature_type)
         codebook.deserialize(serialized)
         return codebook
     

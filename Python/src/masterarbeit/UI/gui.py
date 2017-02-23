@@ -213,9 +213,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.get_checked_features()))              
         
         for codebook in CODEBOOKS:
-            self.codebook_build_combo.addItem(codebook.__name__, codebook)
-        self.train_button.pressed.connect(self.train)        
-        self.build_dict_button.pressed.connect(self.build_codebook)
+            self.codebook_combo.addItem(codebook.__name__, codebook)
+        self.build_dict_button.pressed.connect(self.build_codebook)        
+        
+        self.train_button.pressed.connect(self.train)                
         
     def setup_prediction_tab(self):
         self.update_trained_classifiers()
@@ -258,16 +259,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         segmentation = config.default_segmentation()
         features = []
         feats_used = self.pred_classifier.trained_features
-        codebook = self.store.get_codebook(feats_used[0])
+        # load the required codebooks as used while training
+        codebook_dict = {}
+        for feat_type, codebook_type in feats_used.items():
+            if codebook_type is not None:
+                codebook_dict[feat_type] = self.store.get_codebook(
+                    feat_type, codebook_type)
         for file in files:
             image = read_image(file)
             binary = segmentation.process(image)
-            for feat_type in feats_used:
+            for feat_type in feats_used.keys():
                 feature = feat_type('')
                 success = feature.describe(binary)
                 if not success:
                     print('failure while extracting features from {}'.format(file))
                 elif isinstance(feature, UnsupervisedFeature):
+                    codebook = codebook_dict[feat_type]
                     feature.transform(codebook)
                 features.append(feature)
         predictions = self.pred_classifier.predict(features)
@@ -303,7 +310,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             
             feat_types = self.get_checked_features()
             species = self.get_checked_species()
-            codebook_type = self.codebook_build_combo.currentData()            
+            codebook_type = self.codebook_combo.currentData()            
             
             def build_from_store():
                 for feat_type in feat_types:
@@ -323,13 +330,11 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         feat_types = self.get_checked_features()
         species = self.get_checked_species()
         if len(species) == 0 or len(feat_types) == 0:
-            return
-        
+            return        
          
         feat_type = feat_types[0]
         if len(feat_types) == 0 or len(species) == 0:
             return
-        input_dim = len(feat_type.columns)
         features = self.store.get_features(feat_type, categories=species)
         ready_features = []
         raw_features = []
@@ -338,15 +343,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 not feature.data_is_analysed):
                 raw_features.append(feature)
             else:
-                ready_features.append(feature)                
-        
-        if len(raw_features) > 0:
-            options = [c.__name__ for c in CODEBOOKS]
-            sel, codebook, accepted = SelectionDialog.get_selection(
-                options, data=None, label='select a codebook', 
-                title='Codebook', parent=None)
-            if not accepted:
-                return
+                ready_features.append(feature)         
+                
+        feat_codebook_dict = {}
+        codebook_type = self.codebook_combo.currentData()  
             
         name, ok = QInputDialog.getText(self, 'Classifier', 
                                     'set name of classifier')
@@ -356,15 +356,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         classifier = cls(name)   
         
         def train_and_save():
-            if len(raw_features) > 0:                
-                print('transforming raw features with codebook')
+            if len(raw_features) > 0:
+                codebooks = {}
+                print('transforming raw features with {}'.format(
+                    codebook_type.__name__))
                 for feature in raw_features:
+                    feat_type = type(feature)
+                    if feat_type in codebooks:
+                        codebook = codebooks[feat_type]
+                    else:
+                        codebook = self.store.get_codebook(feat_type, 
+                                                           codebook_type)
+                        codebooks[feat_type] = codebook
                     feature.transform(codebook)
                     ready_features.append(feature)
             print('training classifier...')
             classifier.train(features)
             print('classifier trained')
             self.store.save_classifier(classifier)
+            
         FunctionProgressDialog(train_and_save, parent=self).exec_()
         self.update_trained_classifiers()
         
