@@ -3,14 +3,15 @@ seed = 0
 np.random.seed = seed
 PYTHONHASHSEED = seed
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
-from masterarbeit.model.features.idsc import IDSCDict, IDSCKMeans, IDSCGaussiansKMeans, IDSCGaussiansDict
-from masterarbeit.model.features.texture import LocalBinaryPattern, LocalBinaryPatternCenterPatch, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Leafvenation, Sift, SiftPatch, Surf, SurfPatch
-from masterarbeit.model.classifiers.mlp import ComplexMLP
+from masterarbeit.model.features.codebook import KMeansCodebook, DictionaryLearning
+from masterarbeit.model.features.idsc import IDSC, MultilevelIDSC
+from masterarbeit.model.features.texture import LocalBinaryPattern, LocalBinaryPatternCenterPatch, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, LeafvenationMorph, Sift, Surf
 from masterarbeit.model.classifiers.svm import SVM
 from masterarbeit.model.features.moments import ZernikeMoments, HuMoments
 from masterarbeit.model.segmentation.segmentation_opencv import Binarize
 from masterarbeit.model.segmentation.helpers import read_image
 from masterarbeit.model.classifiers.metrics import ConfusionMatrix
+from masterarbeit.model.classifiers.mlp import ComplexMLP
 from sklearn import svm
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import confusion_matrix
@@ -25,24 +26,35 @@ def validation_test(features, classifier):
     
     #classifier._train(X_train, y_train)
     #y_pred = classifier._predict(np.array(X_test))
-    real, predicted, accuracy = classifier.validate(features)
-    print(accuracy)
+    (real, predicted, accuracy, precision_score, 
+     error, loss, label_precision) = classifier.validate(features)
+    print('accuraccy: {acc} \nprecision score: {prec}: \nerror: {e}\n'.format(
+        acc=accuracy, prec=precision_score, e=error
+    ))
+    print('loss: {loss} \nlabel precision: {prec}'.format(
+        loss=loss, prec=label_precision
+    ))
     #conf = ConfusionMatrix(real, predicted)
     #conf.normalize()
     #conf.plot(title='Confusion matrix normalized')
     
-def test_feat_types(feat_types, species, h5):
+def test_feat_types(feat_types, species, h5, codebook_type):
     for feat_type in feat_types:
-        features = h5.get_features(feat_type, species) 
-        
+        features = h5.get_features(feat_type, species)
+        codebook = h5.get_codebook(feat_type, codebook_type)        
+        for feature in features:
+            feature.transform(codebook)
         classifier = ComplexMLP('IDSCDictTESTbatch') 
         validation_test(features, classifier)    
         classifier = SVM('IDSCDictTESTbatch', seed=0)
         validation_test(features, classifier)    
         #test_mlp(features, mlp)    
         
-def test_join(feat_types, species, h5):
-    joined = h5.get_joined_features(feat_types, species)
+def test_join(feat_types, species, h5, codebook_type):
+    codebooks = [h5.get_codebook(feat_type, codebook_type) 
+                 for feat_type in feat_types]
+    joined = h5.get_joined_features(feat_types, species, 
+                                      codebook_type=KMeansCodebook)
     classifier = ComplexMLP('IDSCDictTESTbatch') 
     validation_test(joined, classifier)     
     classifier = SVM('IDSCDictTESTbatch', seed=0)
@@ -73,16 +85,21 @@ if __name__ == '__main__':
     h5 = HDF5Pandas()
     #h5.open('../../hdf5_test.h5') 
     #h5.open('../../contour_test.h5')  
-    h5.open('../../eigenes_set.h5')    
+    #h5.open('../../eigenes_set.h5')    
+    h5.open('D:\Eigene Dateien\Dokumente\Studium\Masterarbeit/swedish leaf dataset.h5')     
     species = None#['1 - Klarapfel', '2 - roter Boskop', '7 - Apfelquitte']
-    feat_types = [IDSCGaussiansKMeans, LocalBinaryPattern, LocalBinaryPatternCenterPatch, LocalBinaryPatternPatches] #IDSCGaussiansKMeans, IDSCDict, ZernikeMoments, IDSCKMeans, LocalBinaryPatternPatch
+    feat_types = [MultilevelIDSC] #IDSCGaussiansKMeans, IDSCDict, ZernikeMoments, IDSCKMeans, LocalBinaryPatternPatch
+    codebook_type = KMeansCodebook
     
-    ComplexMLP.verbose = 0    
-    ComplexMLP.epoch = 2000
+    ComplexMLP.verbose = 2    
+    ComplexMLP.epoch = 200
     ComplexMLP.activation = 'softsign'
-    #test_feat_types([IDSCDict], species, h5)
-    #test_feat_types([IDSCDict], species, h5)
-    #test_feat_types([IDSCKMeans], species, h5)
+    #test_feat_types([MultilevelIDSC], species, h5, codebook_type)
+    #test_feat_types([MultilevelIDSC], species, h5, codebook_type)
+    #test_feat_types([MultilevelIDSC], species, h5, codebook_type)
+    test_join([MultilevelIDSC, Surf], species, h5, codebook_type)
+    ComplexMLP.dropout = False
+    test_join([MultilevelIDSC, Surf], species, h5, codebook_type)
     #print('-' * 10)  
     #test_feat_types([IDSCGaussiansDict], species, h5)
     #test_feat_types([IDSCGaussiansDict], species, h5)
@@ -97,11 +114,11 @@ if __name__ == '__main__':
     #test_feat_types([GaborFilterBankCenterPatch], species, h5)   
     #test_feat_types([GaborFilterBankCenterPatch], species, h5)   
     #test_mlp_def(feat_types[0], species, h5)
-    print('joined')
-    test_join([IDSCGaussiansDict, Surf], species, h5)
-    test_join([IDSCGaussiansDict, GaborFilterBankPatches], species, h5)
-    test_join([IDSCGaussiansDict, Surf, GaborFilterBankPatches], species, h5)
-    test_join([IDSCGaussiansKMeans, Surf, GaborFilterBankPatches], species, h5)
+    #print('joined')
+    #test_join([IDSCGaussiansDict, Surf], species, h5)
+    #test_join([IDSCGaussiansDict, GaborFilterBankPatches], species, h5)
+    #test_join([IDSCGaussiansDict, Surf, GaborFilterBankPatches], species, h5)
+    #test_join([IDSCGaussiansKMeans, Surf, GaborFilterBankPatches], species, h5)
     #test_join([IDSCGaussiansKMeans, LocalBinaryPattern], species, h5)
     #test_join([IDSCGaussiansKMeans, LocalBinaryPattern], species, h5)
     #test_join([IDSCGaussiansKMeans, LocalBinaryPatternCenterPatch], species, h5)

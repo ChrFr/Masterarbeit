@@ -11,11 +11,11 @@ import json
 from collections import OrderedDict
 from keras.engine.topology import Container as KerasModel
 from keras.models import load_model as keras_load_model
+from masterarbeit.model.features.feature import UnorderedFeature, JoinedFeature
 import pickle
 
 from masterarbeit.model.backend.data import (Data, class_to_string, 
                                              load_class)
-from masterarbeit.model.features.feature import JoinedFeature
 
 DATETIME_FORMAT = "%H:%M:%S %d.%m.%y"
 
@@ -190,6 +190,8 @@ class HDF5Pandas(Data):
             return None
         ids = feature_frame.index
         features = []
+        codebooks = [self.get_codebook(feat_type, codebook_type) 
+                     for feat_type in feat_types]        
         for id in ids:
             r = feature_frame.loc[id]
             category = r['category']
@@ -200,17 +202,31 @@ class HDF5Pandas(Data):
                 values = np.array([v for v in r])
             feature = feature_type(category, id=id)  
             feature.values = values
+            if (isinstance(feature, UnorderedFeature) and 
+                not feature.is_transformed):
+                codebook = codebooks[i]
+                if codebook is None:
+                    raise Exception(
+                        'codebook for {} needed but not found'
+                        .format(feat_types[i].label))
+                feature.transform(codebook)
             features.append(feature)
         return features
     
-    def get_joined_features(self, feature_types, categories):
+    def get_joined_features(self, feat_types, categories, codebook_type=None):
+        '''
+        orders features by id, only features with ids apperin 
+        all feat_types and categories are returned
+        '''
         features = []
         if categories is None:
             categories = self.get_categories()
         for category in categories:
             common_ids = None
-            feature_frames = []
-            for feat_type in feature_types:
+            feature_frames = []                  
+            codebooks = [self.get_codebook(feat_type, codebook_type) 
+                         for feat_type in feat_types]            
+            for feat_type in feat_types:
                 feature_frame = self._get_feature_frame_cat(feat_type, category)                 
                 del feature_frame['category']                
                 ids = feature_frame.index.values
@@ -220,10 +236,24 @@ class HDF5Pandas(Data):
                     common_ids = common_ids & set(ids)
                 feature_frames.append(feature_frame)        
             for id in common_ids:
-                feature = JoinedFeature(category, id=id)                
-                for feature_frame in feature_frames:
-                    feature.add(feature_frame.loc[id].values)
-                features.append(feature)
+                joined_feature = JoinedFeature(category, id=id)             
+                for i, feature_frame in enumerate(feature_frames):
+                    feature = feat_types[i](category, id=id)  
+                    r = feature_frame.loc[id]
+                    if self.multi_dim_column in feature_frame.columns:
+                        feature.values = pickle.loads(r[self.multi_dim_column])
+                    else:
+                        feature.values = r.values                    
+                    if (isinstance(feature, UnorderedFeature) and 
+                        not feature.is_transformed):
+                        codebook = codebooks[i]
+                        if codebook is None:
+                            raise Exception(
+                                'codebook for {} needed but not found'
+                                .format(feat_types[i].label))
+                        feature.transform(codebook)
+                    joined_feature.add(feature)
+                features.append(joined_feature)
         return features
     
     def save_classifier(self, classifier):
@@ -353,6 +383,9 @@ class HDF5Pandas(Data):
         self.commit()
         
     def get_codebook(self, feature_type, codebook_type):
+        if (not issubclass(feature_type, UnorderedFeature) or 
+            codebook_type is None):
+            return None
         table_path = self.codebook_path.format(
             feature=feature_type.__name__, codebook = codebook_type.__name__)  
         if table_path not in self.store:

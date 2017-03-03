@@ -55,18 +55,19 @@ class Feature(metaclass=ABCMeta):
         pass
     
     
-class UnsupervisedFeature(Feature):
+class UnorderedFeature(Feature):
     n_levels = 1
     histogram_length = 50
+    codebook_type = None
     
     @property
-    def data_is_analysed(self):
+    def is_transformed(self):
         return (self.is_described and 
                 len(self._v.shape) == 1 and 
-                type(self._v) != np.ndarray)      
+                self._v.dtype != np.object)      
         
     def __init__(self, category, id=None):
-        super(UnsupervisedFeature, self).__init__(category, id=id)
+        super(UnorderedFeature, self).__init__(category, id=id)
         self.codebook_type = None
         
     def transform(self, codebook):
@@ -75,7 +76,6 @@ class UnsupervisedFeature(Feature):
                             #.format(self.codebook_type.__name__))
         self.codebook_type = type(codebook)
         self._v = codebook.transform(self.values) 
-                
 
 class JoinedFeature(Feature):
     label = 'Joined Feature'
@@ -84,8 +84,8 @@ class JoinedFeature(Feature):
         super(JoinedFeature, self).__init__(category, id=id)
         self._v = np.empty(0)
     
-    def add(self, values):
-        self._v = np.concatenate((self._v, values))
+    def add(self, feature):
+        self._v = np.concatenate((self._v, feature.values))
         
     def describe(self, image, steps=None):
         pass    

@@ -18,7 +18,8 @@ from masterarbeit.config import Config
 from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER)
 from masterarbeit.config import (SEGMENTATION, FEATURES, CLASSIFIERS,
                                  CODEBOOKS)
-from masterarbeit.model.segmentation.helpers import (read_image, remove_thin_objects)
+from masterarbeit.model.segmentation.helpers import (read_image, 
+                                                     remove_thin_objects)
 from masterarbeit.UI.imageview import ImageViewer
 from masterarbeit.model.features.plot import pairplot
 from masterarbeit.UI.dialogs import (CropDialog, ExtractFeatureDialog, 
@@ -27,8 +28,8 @@ from masterarbeit.UI.dialogs import (CropDialog, ExtractFeatureDialog,
                                      browse_file, WaitDialog, 
                                      FunctionProgressDialog, error_message)
 
-from masterarbeit.model.segmentation.segmentation_opencv import KMeansHSVBinarize
-from masterarbeit.model.features.feature import UnsupervisedFeature
+from masterarbeit.model.segmentation.segmentation import KMeansHSVBinarize
+from masterarbeit.model.features.feature import UnorderedFeature
 
 config = Config()
 
@@ -135,7 +136,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         self.update_trained_classifiers()
 
     def load_source_image(self, filename):
-        if not filename:
+        if not filename or not os.path.isfile(filename):
             return
         self.reset_processed_views()
         self.source_pixels = read_image(filename)
@@ -273,7 +274,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 success = feature.describe(binary)
                 if not success:
                     print('failure while extracting features from {}'.format(file))
-                elif isinstance(feature, UnsupervisedFeature):
+                elif isinstance(feature, UnorderedFeature):
                     codebook = codebook_dict[feat_type]
                     feature.transform(codebook)
                 features.append(feature)
@@ -310,20 +311,25 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             
             feat_types = self.get_checked_features()
             species = self.get_checked_species()
-            codebook_type = self.codebook_combo.currentData()            
+            codebook_type = self.codebook_combo.currentData()     
+            diag = None
             
             def build_from_store():
                 for feat_type in feat_types:
                     codebook = codebook_type(feat_type)
                     features = self.store.get_features(feat_type, 
                                                        categories=species)
+                    if features is None:
+                        print('{} not described yet!'.format(feat_type.label))        
+                        continue
                     print('building {} for {} from {} features...'.format(
                         codebook_type.__name__, feat_type.label, len(features)))
                     codebook.fit(features)
                     self.store.save_codebook(codebook, feat_type)
                     print('codebook built and stored')
                     
-            FunctionProgressDialog(build_from_store, parent=self).exec_()
+            diag = FunctionProgressDialog(build_from_store, parent=self)
+            diag.exec_()
         self.update_feature_table()
             
     def train(self):
@@ -339,8 +345,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         ready_features = []
         raw_features = []
         for feature in features:
-            if (isinstance(feature, UnsupervisedFeature) and
-                not feature.data_is_analysed):
+            if (isinstance(feature, UnorderedFeature) and
+                not feature.is_transformed):
                 raw_features.append(feature)
             else:
                 ready_features.append(feature)         
@@ -465,7 +471,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             feat_item = QTableWidgetItem(feature_type.label)
             feat_item.setCheckState(False)
             b_color = Qt.QColor(255, 255, 255) 
-            if issubclass(feature_type, UnsupervisedFeature):
+            if issubclass(feature_type, UnorderedFeature):
                 codebooks = self.store.get_codebooks(feature_type)
                 if len(codebooks) == 0:                    
                     dict_label = 'dictionary required, but none found'
@@ -536,12 +542,14 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             update_ui(self.source_pixels)
         else:
             segmentation = self.segmentation_combo.itemData(index)()
-            diag = WaitDialog(lambda: segmentation.process(self.source_pixels, 
-                                                           steps=steps),                           
-                                      parent=self)
+            result = segmentation.process(self.source_pixels, steps=steps)    
+            update_ui(result)
+            #diag = WaitDialog(lambda: segmentation.process(self.source_pixels, 
+                                                           #steps=steps),                           
+                                      #parent=self)
             
-            diag.finished.connect(lambda: update_ui(diag.result))
-            diag.run()             
+            #diag.finished.connect(lambda: update_ui(diag.result))
+            #diag.run()                       
             
     def multi_extract(self, features=[]):
         ExtractFeatureDialog(preselected=features, parent=self).exec_()
@@ -567,7 +575,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
     
         def describe():
             feature.describe(self.preprocessed_pixels, steps=steps) 
-            if isinstance(feature, UnsupervisedFeature):
+            if isinstance(feature, UnorderedFeature):
                 codebook = self.store.get_codebook(type(feature))
                 if codebook is None:
                     error_message('Codebook needed but not built yet!', 

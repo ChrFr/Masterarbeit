@@ -9,7 +9,7 @@ from scipy.sparse.csgraph import floyd_warshall
 from sklearn.preprocessing import normalize
 from skimage.draw import line as skline
 
-from masterarbeit.model.features.feature import UnsupervisedFeature
+from masterarbeit.model.features.feature import UnorderedFeature
 from masterarbeit.model.segmentation.helpers import simple_binarize
 from masterarbeit.model.features.codebook import (DictLearningCodebook, 
                                                   KMeansCodebook)
@@ -20,7 +20,7 @@ def get_points_on_line(p1, p2):
     x, y = skline(p1[0], p1[1], p2[0], p2[1])
     return x, y
 
-class IDSC(UnsupervisedFeature):
+class IDSC(UnorderedFeature):
     '''
     '''    
     label = 'Inner Distance Shape Context'

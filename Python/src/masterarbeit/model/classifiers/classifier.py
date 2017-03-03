@@ -3,7 +3,12 @@ from abc import ABCMeta
 from abc import abstractmethod
 from sklearn.model_selection import train_test_split
 from sklearn.metrics import accuracy_score
-from masterarbeit.model.features.feature import UnsupervisedFeature
+from sklearn.metrics import (label_ranking_loss, 
+                             label_ranking_average_precision_score, 
+                             coverage_error, average_precision_score)
+
+from keras.utils import np_utils
+from masterarbeit.model.features.feature import UnorderedFeature
 from masterarbeit.model.backend.data import load_class, class_to_string
 
 class Classifier(metaclass=ABCMeta):       
@@ -62,7 +67,8 @@ class Classifier(metaclass=ABCMeta):
     def predict(self, features):    
         #if feat_type not in self.trained_feature_types
         values = np.array([feat.values for feat in features])    
-        classes = self._predict(values)
+        predictions = self._predict(values)        
+        classes = np_utils.probas_to_classes(predictions)        
         return np.array(np.array(self.trained_categories))[classes]
     
     def validate(self, features):
@@ -81,11 +87,22 @@ class Classifier(metaclass=ABCMeta):
              values, classes, test_size=test_size, random_state=self.seed)
         
         self._train(np.array(training_values), training_classes, n_classes)        
-        predicted_classes = self._predict(np.array(test_values))
+        predictions = self._predict(np.array(test_values))        
+        predicted_classes = np_utils.probas_to_classes(predictions)    
+        binary_labels = np_utils.to_categorical(test_classes)
+        
+        # compute the metrics
+        accuracy = accuracy_score(test_classes, predicted_classes)
+        precision_score = average_precision_score(binary_labels, predictions)
+        error = coverage_error(binary_labels, predictions)
+        loss = label_ranking_loss(binary_labels, predictions)
+        label_precision = label_ranking_average_precision_score(binary_labels, 
+                                                          predictions)
+        
         real_cat = unique_cat[test_classes]
-        predicted_cat = unique_cat[predicted_classes]  
-        accuracy = accuracy_score(real_cat, predicted_cat)
-        return real_cat, predicted_cat, accuracy    
+        predicted_cat = unique_cat[predicted_classes]         
+        return (real_cat, predicted_cat, accuracy, precision_score, 
+                error, loss, label_precision)
     
     def serialize(self):
         trained_features = [class_to_string(ft)

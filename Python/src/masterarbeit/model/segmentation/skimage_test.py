@@ -138,8 +138,8 @@ def segmentation_():
     plt.show()
     
 def seg2():
-    #image = io.imread('D:/Eigene Dateien/Dokumente/OneDrive/Dokumente/Studium/Master HTW/Masterarbeit/Repository/Python/src/masterarbeit/IMAG0780.JPG')
-    image = io.imread(u'D:/Eigene Dateien/Dokumente/Studium/Masterarbeit/Eigenes Set/16_10  04  Blaetter f. Christoph/DSC_8482.jpg')
+    image = io.imread('D:/Eigene Dateien/Dokumente/OneDrive/Dokumente/Studium/Master HTW/Masterarbeit/Repository/Python/src/masterarbeit/IMAG0780.JPG')
+    #image = io.imread(u'D:/Eigene Dateien/Dokumente/Studium/Masterarbeit/Eigenes Set/16_10  04  Blaetter f. Christoph/DSC_8482.jpg')
     shape = image.shape
     shape = (shape[0] / 4, shape[1] / 4, shape[2])
     img = transform.resize(image, shape)    
@@ -337,5 +337,5 @@ def gabor_():
     plt.show()    
         
 if __name__ == '__main__':
-    gabor_()
+    seg2()
     

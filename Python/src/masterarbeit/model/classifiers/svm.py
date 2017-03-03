@@ -1,6 +1,6 @@
 from masterarbeit.model.classifiers.classifier import Classifier
 from masterarbeit.model.backend.data import load_class, class_to_string
-from sklearn.svm import LinearSVC
+from sklearn.svm import SVC
 import pickle
 
 class SVM(Classifier):   
@@ -14,7 +14,7 @@ class SVM(Classifier):
     def setup_model(self, input_dim, n_classes):    
         self.input_dim = input_dim
         # if random_state is None, no predefined seed will be used by SVM
-        self.model = LinearSVC(random_state=self.seed) 
+        self.model = SVC(kernel='linear', probability=True) 
 
     def _train(self, values, classes, n_classes):
         input_dim = values.shape[1]
@@ -23,8 +23,8 @@ class SVM(Classifier):
         self.model.fit(values, classes)
 
     def _predict(self, values):
-        classes = self.model.predict(values)
-        return classes
+        predictions = self.model.predict_proba(values)
+        return predictions
     
     def serialize(self):
         pickled = pickle.dumps(self.model)

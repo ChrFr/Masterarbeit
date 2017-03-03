@@ -23,18 +23,17 @@ class MLP(Classifier):
         self.model = Sequential()
             
     def _train(self, values, classes, n_classes):
-        encoded_categories = np_utils.to_categorical(classes)
+        binary_labels = np_utils.to_categorical(classes)
         input_dim = values.shape[1]
         
         self.setup_model(input_dim, n_classes)        
-        self.model.fit(values, encoded_categories, 
+        self.model.fit(values, binary_labels, 
                        nb_epoch=self.epoch, batch_size=self.batch_size, 
                        verbose=self.verbose)
         
     def _predict(self, values):
         predictions = self.model.predict(values, batch_size=16)   
-        classes = np_utils.probas_to_classes(predictions)
-        return classes
+        return predictions
            
         
 class ComplexMLP(MLP):
@@ -42,6 +41,7 @@ class ComplexMLP(MLP):
     dense_layers = 1
     activation = 'relu'
     hidden_units = 64
+    dropout = True
     
     def setup_model(self, input_dim, n_categories):    
         self.input_dim = input_dim
@@ -49,7 +49,8 @@ class ComplexMLP(MLP):
             self.model.add(Dense(self.hidden_units,
                                  input_dim=input_dim, init='uniform'))
             self.model.add(Activation(self.activation))
-            self.model.add(Dropout(0.5))
+            if self.dropout:
+                self.model.add(Dropout(0.5))
         self.model.add(Dense(n_categories, init='uniform'))
         self.model.add(Activation('softmax'))
     

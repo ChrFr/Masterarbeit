@@ -1,25 +1,38 @@
 import json
 import os
 
-from masterarbeit.model.segmentation import segmentation_opencv as pocv
-from masterarbeit.model.segmentation import segmentation_skimage as psk
+from masterarbeit.model.segmentation.segmentation import (
+    Binarize, BinarizeHSV, KMeansBinarize, KMeansHSVBinarize, Slic)
 from masterarbeit.model.features.moments import ZernikeMoments, HuMoments
-from masterarbeit.model.features.texture import Sift, SiftPatch, LocalBinaryPattern, LocalBinaryPatternCenterPatch, Leafvenation, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Surf, SurfPatch, LocalBinaryPatternKMeans
-from masterarbeit.model.features.borders import Borders
+from masterarbeit.model.features.texture import (
+    Sift, Surf,
+    LocalBinaryPattern, LocalBinaryPatternCenterPatch, 
+    LocalBinaryPatternPatches,
+    LeafvenationMorph, 
+    GaborFilterBank, GaborFilterBankPatches,
+    GaborFilterBankCenterPatch)
 from masterarbeit.model.features.idsc import (IDSC, MultilevelIDSC)
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
 from masterarbeit.model.classifiers.mlp import ComplexMLP, SimpleMLP
 from masterarbeit.model.classifiers.svm import SVM
-from masterarbeit.model.features.codebook import KMeansCodebook, DictionaryLearning
+from masterarbeit.model.features.codebook import (KMeansCodebook, 
+                                                  DictionaryLearning)
 
-IMAGE_FILTER = 'Images (*.png, *.jpg)'
+SUPPORTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.tif']
+IMAGE_FILTER = 'Images ({})'.format(
+    ','.join(['*' + s for s in SUPPORTED_IMAGE_EXTENSIONS]))
 ALL_FILES_FILTER = 'All Files(*.*)'
 HDF5_FILTER = 'HDF5 (*.h5)'
 
-SEGMENTATION = (pocv.Binarize, psk.BinarizeHSV, 
-                pocv.KMeansBinarize, pocv.KMeansHSVBinarize)
-FEATURES = (HuMoments, ZernikeMoments, Borders, 
-            MultilevelIDSC, IDSC, Sift, SiftPatch, LocalBinaryPattern, LocalBinaryPatternCenterPatch, Leafvenation, GaborFilterBank, GaborFilterBankPatches, LocalBinaryPatternPatches, GaborFilterBankCenterPatch, Haralick, Surf, SurfPatch, LocalBinaryPatternKMeans)
+SEGMENTATION = (Binarize, BinarizeHSV, KMeansBinarize, KMeansHSVBinarize, Slic)
+FEATURES = (HuMoments, ZernikeMoments,
+            MultilevelIDSC, IDSC, 
+            Sift, Surf, 
+            LocalBinaryPattern, LocalBinaryPatternCenterPatch, 
+            LocalBinaryPatternPatches,
+            LeafvenationMorph, 
+            GaborFilterBank, GaborFilterBankPatches, 
+            GaborFilterBankCenterPatch)
 CODEBOOKS = (KMeansCodebook, DictionaryLearning)
 CLASSIFIERS = (ComplexMLP, SimpleMLP, SVM)
 DATA = [HDF5Pandas]
@@ -40,7 +53,7 @@ class Config(metaclass=Singleton):
     config_file = os.path.join(file_path, 'config.json')
     
     # the main segmentation used, when not asked for specific one
-    default_segmentation = pocv.KMeansHSVBinarize
+    default_segmentation = KMeansHSVBinarize
     
     # config is built out of this dict, if not exists yet
     _default = {

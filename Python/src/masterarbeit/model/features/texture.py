@@ -10,13 +10,14 @@ import numpy as np
 import cv2
 import itertools
 
-from masterarbeit.model.features.feature import Feature, UnsupervisedFeature
+from masterarbeit.model.features.feature import Feature, UnorderedFeature
 from masterarbeit.model.features.codebook import KMeansCodebook
-from masterarbeit.model.segmentation.segmentation_opencv import Binarize
+from masterarbeit.model.segmentation.segmentation import Binarize
 from masterarbeit.model.segmentation.helpers import crop
 from masterarbeit.model.segmentation.helpers import simple_binarize
 
-class Sift(UnsupervisedFeature):
+
+class Sift(UnorderedFeature):
     label = 'Sift Keypoints'
     histogram_length = 50
     columns = np.arange(0, histogram_length)
@@ -33,20 +34,9 @@ class Sift(UnsupervisedFeature):
             steps['keypoints'] = img_keys
             
         return des
-        
-class SiftPatch(Sift):
-    label = 'Sift Keypoints with gabor'
+           
     
-    def _describe(self, image, steps=None):
-        patch = get_center_patch(image)
-        gabor_patch = gabor(patch)
-        if steps is not None:
-            steps['patch'] = patch
-            steps['gabor'] = gabor_patch
-        return super(SiftPatch, self)._describe(patch, steps=steps)      
-    
-    
-class Surf(UnsupervisedFeature):
+class Surf(UnorderedFeature):
     label = 'Surf Keypoints'
     histogram_length = 50
     codebook_type = KMeansCodebook
@@ -61,26 +51,6 @@ class Surf(UnsupervisedFeature):
             
         return des
     
-    
-class SurfPatch(Surf):
-    label = 'Surf Keypoints with gabor'
-    
-    def _describe(self, image, steps=None):
-        #patch = get_center_patch(image, 1)
-        #gabor_patch = gabor(patch)
-        #if steps is not None:
-            #steps['patch'] = patch
-            #steps['gabor'] = gabor_patch
-        patches = get_matrix_patches(image, 100)
-        desc = None
-        for patch in patches:
-            patch_desc = super(SurfPatch, self)._describe(patch, steps=None)  
-            if patch_desc is not None:
-                if desc is None:
-                    desc = patch_desc
-                else:
-                    desc = np.concatenate((desc, patch_desc))
-        return desc
                 
 def gabor(image):
 
@@ -88,7 +58,8 @@ def gabor(image):
         filters = []
         ksize = 31
         for theta in np.arange(0, np.pi, np.pi / 16):
-            kern = cv2.getGaborKernel((ksize, ksize), 4.0, theta, 10.0, 0.5, 0, ktype=cv2.CV_32F)
+            kern = cv2.getGaborKernel((ksize, ksize), 4.0, theta, 
+                                      10.0, 0.5, 0, ktype=cv2.CV_32F)
             kern /= 1.5*kern.sum()
             filters.append(kern)
         return filters
@@ -141,8 +112,7 @@ class LocalBinaryPatternPatches(LocalBinaryPattern):
     label = 'Local Binary Pattern Multi Patches'
     
     def _describe(self, image, steps=None):        
-        #patches = get_random_patches(image, 100, 100)
-        patches = get_matrix_patches(image, 100, steps=steps)
+        patches = get_matrix_patches(image, 300, steps=steps)
         histogram = None
         for patch in patches:     
             sub_hist = super(LocalBinaryPatternPatches, self)._describe(
@@ -152,93 +122,63 @@ class LocalBinaryPatternPatches(LocalBinaryPattern):
             else:
                 histogram += sub_hist
         histogram = histogram / len(patches)
-        return normalize(histogram.reshape(1, -1))[0]
+        return normalize(histogram.reshape(1, -1))[0]    
+       
     
-    
-class LocalBinaryPatternKMeans(UnsupervisedFeature):
-    label = 'Local Binary Pattern Detection KMeans'
-    radius = 3
-    n_points = 8 * radius        
-    histogram_length = 50
-    codebook_type = KMeansCodebook
-    
-    def _describe(self, image, steps=None):
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)   
-        lbp = local_binary_pattern(gray, self.n_points, self.radius, method='uniform')             
-        return lbp
-    
-    
-class Leafvenation(Feature):
-    label = 'Leaf Veins Sceleton'
+class LeafvenationMorph(Feature):
+    label = 'Leaf Veins Morphology'
     
     def _describe(self, image, steps=None):  
-        #scaled = self._common_scale(image)
+        scaled = self._common_scale(image)
         
-        #gray = cv2.cvtColor(scaled, cv2.COLOR_BGR2GRAY)
-        #gray[gray == 255] = 0
-        #binary = np.clip(gray, 0, 1) * 255        
-        #disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, 
-                                         #(200, 200))     
-        #binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, disk)
-        #background_mask = binary == 0
-        ## area of foreground in pixels
-        #leaf_area = gray.size - background_mask.sum()
-        #gabor_img = gabor(gray)        
-        #gabor_img[background_mask] = 0     
-        ##steps['gabor'] = gabor_img        
-        ##binary = Binarize().process(gabor_img)  
-        ##steps['binary'] = binary
-        
-        #def segment_veins(img, kernel_size):
-            #disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, 
-                                             #(kernel_size, kernel_size))
-            #opened = cv2.morphologyEx(gabor_img, cv2.MORPH_CLOSE, disk)
-            #veins = gabor_img - opened
-            #veins[veins < 125] = 0
-            #veins = np.clip(veins, 0, 1)
-            #veins = 1 - veins 
-            #veins[background_mask] = 0
-            #return veins
-        
-        #histogram = []
-        #for kernel_size in[10, 30, 50]:
-            #veins = segment_veins(gabor_img, kernel_size)
-            #if steps is not None:
-                ## sometimes ui crashes when trying to make pixmap 
-                ## -> imshow instead
-                #steps['{}'.format(kernel_size)] = veins*255
-                ##cv2.imshow('kernel {}'.format(kernel_size), veins * 255)
-            #perc_veins = veins.sum() / leaf_area
-            #histogram.append(perc_veins)
-        
-        #return np.array(histogram)
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        gray = cv2.cvtColor(scaled, cv2.COLOR_BGR2GRAY)
+        disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, 
+                                         (200, 200))     
         background_mask = (gray == 255).astype(np.uint8) * 255
-        background_mask = cv2.GaussianBlur(background_mask, (0,0), 5)
+        background_mask = cv2.GaussianBlur(background_mask, (0,0), 100)
         background_mask = (background_mask != 0)
-        for sigma in [1, 2, 3]:
-            blurred = cv2.GaussianBlur(gray, (0,0), sigma)
-            canny = cv2.Canny(blurred, 0, 10)            
-            canny[background_mask] = 0
-            cv2.imshow('{}'.format(sigma), canny)
+        # area of foreground in pixels
+        leaf_area = gray.size - background_mask.sum()
+        gabor_img = gabor(gray)      
+        if steps is not None:
+            cv2.imshow('k', gabor_img)
         
-        #steps['canny'] = canny
-        return []
-    
+        def segment_veins(img, kernel_size):
+            disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, 
+                                             (kernel_size, kernel_size))
+            closed = cv2.morphologyEx(gabor_img, cv2.MORPH_CLOSE, disk)
+            veins = gabor_img - closed
+            veins[veins < 125] = 0
+            veins = np.clip(veins, 0, 1)
+            veins = 1 - veins 
+            veins[background_mask] = 0
+            return veins        
         
-class Haralick(Feature):
-    label = 'Haralick Features'
-    
-    def _describe(self, image, steps=None):   
-        #patch = get_center_patch(image) 
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)  
-        gray[gray==255] = 0
-        histogram = haralick(gray, ignore_zeros=True)
-        return np.array([histogram.mean()])
+        histogram = []
+        for kernel_size in [10, 30, 50]:
+            veins = segment_veins(gabor_img, kernel_size)
+            if steps is not None:
+                # sometimes ui crashes when trying to make pixmap out of this
+                #steps['{}'.format(kernel_size)] = veins*255
+                # -> deactivated and imshow instead
+                cv2.imshow('kernel {}'.format(kernel_size), veins * 255)
+                
+                # extract hough lines, only for visualization at the moment
+                lines = cv2.HoughLinesP(veins,1,np.pi/180,100, 100, 10)
+                line_img = np.zeros(scaled.shape)
+                for line in lines:
+                    for x1,y1,x2,y2 in line:
+                        cv2.line(line_img, (x1, y1), (x2, y2), (0,255,0), 2)
+                steps['lines kernel {}'.format(kernel_size)] = line_img
+                
+            perc_veins = veins.sum() / leaf_area
+            histogram.append(perc_veins)            
+        
+        return np.array(histogram)          
        
 def get_center_patch(image, texture_ratio=0.95):
     binary = simple_binarize(image)
-             
+    
     im2, contours, hierarchy = cv2.findContours(binary, 
                                                 cv2.RETR_TREE, 
                                                 cv2.CHAIN_APPROX_NONE)
@@ -283,8 +223,7 @@ def get_center_patch(image, texture_ratio=0.95):
     return patch
 
 def get_circular_patch(image, texture_ratio=1, steps=None):
-    binary = simple_binarize(image)
-    binary[binary > 0] = 255
+    binary = simple_binarize(image) * 255
                  
     im2, contours, hierarchy = cv2.findContours(binary, 
                                                 cv2.RETR_TREE, 
@@ -298,7 +237,7 @@ def get_circular_patch(image, texture_ratio=1, steps=None):
     for scale in np.arange(0.3, 0.9, 0.1):
         scale = 1.0 - scale
         radius = enclosing_radius * scale
-        encircled_pixels = np.zeros(image.shape)
+        encircled_pixels = np.zeros(image.shape, dtype=np.uint8)
         cv2.circle(encircled_pixels, 
                    (int(center[0]), int(center[1])), 
                    int(radius), 
@@ -317,7 +256,12 @@ def get_circular_patch(image, texture_ratio=1, steps=None):
         steps['cutout'] = image 
     return crop(encircled_pixels)
         
-def get_matrix_patches(image, patch_size, pick=None, steps=None):
+def get_matrix_patches(image, n_cells, pick=None, steps=None):
+    '''
+    image is divided in n cells
+    '''
+    # find a suitable size for patches, so that roughly n cells may fit  in
+    patch_size = int(np.sqrt(image.size / n_cells))
     image = image.copy()
     s_image = image.copy()
     # unify background to black
@@ -339,59 +283,7 @@ def get_matrix_patches(image, patch_size, pick=None, steps=None):
         steps['cutout'] = s_image
     return patches                    
 
-def get_random_patches(image, patch_size, n):
-    binary = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
-    binary[binary==255] = 0
-    binary = np.clip(binary, 0, 1)
-    
-    
-    # make a window with the minimum window size to find
-    kernel = np.ones((patch_size, patch_size),dtype=np.uint8)
-    # filter the image with this kernel
-    res = cv2.filter2D(binary, cv2.CV_16S, kernel)   
-    # find the maximum 
-    m = np.amax(res)
-    # if the maximum is the area of your window at least
-    # one location has been found
-    patches = []
-    if m == patch_size * patch_size:
-        #mask_color = cv2.cvtColor(binary*255, cv2.COLOR_RGB2GRAY)
-        # show each location where we found the maximum
-        # i.e. a possible location for a patch
-        
-        res[res < m] = 0        
-        points = np.transpose(np.nonzero(res))
-        idx = np.random.choice(len(points), n)
-        for y, x in points[idx]:
-            # if you are only interested in the first hit use this:
-            # find firs index and convert it to coordinates of the mask
-            #y, x = np.unravel_index(np.argmax(res), binary.shape)
-            # could do now other things with this location, 
-            # but for now just show it in another color
-            patch = cv2.getRectSubPix(image, (patch_size, patch_size), 
-                                      (x, y))
-            patches.append(patch)
-            #cv2.imshow('{}'.format(x), patch)
-    return patches
-        
-#class MultiblockLocalBinaryPattern()
-    
-   
-#def process(self, image, steps=None):
-    #gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)    
-    #gabor = self.gabor(gray)        
-    #lsd = cv2.createLineSegmentDetector(cv2.LSD_REFINE_STD)
-    #lines = lsd.detect(gabor)
-    #line_img = lsd.drawSegments(np.empty(gray.shape), lines[0])
-    ##masked_source = self._mask(image)
-    #if steps is not None:
-        #steps['gabor'] = gabor
-        #steps['lines'] = line_img
-        ##steps['masked source'] = masked_source    
-    ##cropped = scale_to_bounding_box(binary.copy(), masked_source)
-    #return gabor    
-    
-    
+
 class GaborFilterBank(Feature):
     label = 'Gabor filters'
     binary_input = False
@@ -406,7 +298,8 @@ class GaborFilterBank(Feature):
                 for frequency in (0.05, 0.25):
                     kernel = np.real(gabor_kernel(frequency, theta=theta,
                                                   sigma_x=sigma, sigma_y=sigma))
-                    kernels.append(kernel)        
+                    kernels.append(kernel)      
+                    
         feats = np.zeros((len(kernels), 2), dtype=np.double)
         for k, kernel in enumerate(kernels):
             filtered = ndi.convolve(gray, kernel, mode='wrap')
@@ -417,9 +310,8 @@ class GaborFilterBank(Feature):
     
 class GaborFilterBankPatches(GaborFilterBank):
     label = 'Gabor filters Multi Patches'
-    def _describe(self, image, steps=None):        
-        #patches = get_random_patches(image, 100, 50)
-        patches = get_matrix_patches(image, 100, steps=steps)
+    def _describe(self, image, steps=None): 
+        patches = get_matrix_patches(image, 400, steps=steps)
         histogram = np.zeros(32)
         for patch in patches:     
             histogram += super(GaborFilterBankPatches, self)._describe(
@@ -429,9 +321,11 @@ class GaborFilterBankPatches(GaborFilterBank):
 class GaborFilterBankCenterPatch(GaborFilterBank):
     label = 'Gabor filters Center Patch'
     def _describe(self, image, steps=None): 
-        patch = get_center_patch(image)
+        patch = get_circular_patch(image, steps=steps)        
         histogram = super(GaborFilterBankCenterPatch, self)._describe(
-                patch, steps=None)
+                patch, steps=steps)
+        if steps is not None:
+            steps['patch'] = patch
         return histogram
     
     

@@ -1,8 +1,5 @@
 import numpy as np
 import cv2
-
-from skimage.morphology import erosion, dilation, remove_small_objects   
-from skimage.morphology import disk, square
    
 def simple_binarize(segmented_image):
     gray = cv2.cvtColor(segmented_image, cv2.COLOR_BGR2GRAY)
@@ -10,21 +7,47 @@ def simple_binarize(segmented_image):
     binary = np.clip(gray, 0, 1)  
     return binary
 
+def remove_small_objects(binary, min_area): 
+    binary = binary.copy()
+    i, contours, h = cv2.findContours(binary, cv2.RETR_TREE, 
+                                      cv2.CHAIN_APPROX_SIMPLE) 
+    for contour in contours:
+        area = cv2.contourArea(contour);
+        if (abs(area) < min_area):
+            binary = cv2.drawContours(binary, [contour], 0, 0, 
+                                      thickness=cv2.FILLED)            
+    return binary
+
+def fill_holes(binary):
+    filled = binary.copy().astype(np.uint8)
+    mask = np.zeros((filled.shape[0]+2, filled.shape[1]+2), np.uint8)
+    # that value should not appear in a binary image (0, 255 or 1)
+    fill_code = 75
+    # fill image
+    cv2.floodFill(filled, mask, (0,0), fill_code)
+    # everything that was not filled belongs to the object
+    filled[filled != fill_code] = binary.max()
+    filled[filled == fill_code] = 0
+    return filled
+
 def remove_thin_objects(segmented_image):  
     binary = simple_binarize(segmented_image)
     process_width = 800
     res_factor = process_width / binary.shape[1]
-    new_shape = (int(binary.shape[0] * res_factor), int(binary.shape[1] * res_factor))
+    new_shape = (int(binary.shape[1] * res_factor), 
+                 int(binary.shape[0] * res_factor))
     resized = cv2.resize(binary, new_shape)
-    for i in range(1):
-        eroded = erosion(resized, selem=disk(12))
+    disk_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))  
+    eroded = cv2.erode(resized, disk_kernel)
+        
     # dilate with much bigger structuring element ('blow it up'), 
     # because relevant details might also get lost in erosion 
     # (e.g. leaf tips)
-    for i in range(1):
-        dilated = dilation(eroded, selem=disk(20))
+    disk_kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25)) 
+    dilated = cv2.dilate(eroded, disk_kernel)
+        
     # sometimes parts of the stem remain (esp. the thicker base) -> remove them
-    rem = remove_small_objects(dilated.astype(bool), min_size=10000)
+    rem = remove_small_objects(dilated, 10000)
     rem = rem.astype(np.uint8)
     
     # combine more detailed binary with 'blown up' binary   
