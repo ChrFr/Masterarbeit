@@ -85,7 +85,7 @@
        </palette>
       </property>
       <property name="currentIndex">
-       <number>0</number>
+       <number>1</number>
       </property>
       <widget class="QWidget" name="preprocessing_tab">
        <attribute name="title">
@@ -794,7 +794,14 @@
                <item>
                 <widget class="QRadioButton" name="dict_features_radio">
                  <property name="text">
-                  <string>from selected stored features</string>
+                  <string>from selected stored features </string>
+                 </property>
+                </widget>
+               </item>
+               <item>
+                <widget class="QLabel" name="label_12">
+                 <property name="text">
+                  <string>(Warning: last one only works on raw data!)</string>
                  </property>
                 </widget>
                </item>

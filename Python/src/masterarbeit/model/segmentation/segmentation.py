@@ -1,3 +1,13 @@
+'''
+contains the abstract class and Implementations for segmenting images
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 from abc import ABCMeta
 from abc import abstractmethod
 import math
@@ -131,13 +141,14 @@ class KMeansBinarize(Segmentation):
                                        cv2.THRESH_BINARY)
         
         wo_holes = fill_holes(binary)
-        steps['wo'] = wo_holes
-        
+        if steps is not None:
+            steps['wo'] = wo_holes
+            
         rem = remove_small_objects(wo_holes, 10000)
         rem = rem.astype(np.uint8)
         o_sized = cv2.resize(rem, (image.shape[1], image.shape[0]))
         
-        return o_sized.astype(np.uint8)
+        return o_sized
     
     
 class KMeansHSVBinarize(KMeansBinarize):

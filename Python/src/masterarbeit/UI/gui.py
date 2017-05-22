@@ -1,3 +1,13 @@
+'''
+contains the main control of the ui
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 from PyQt5 import Qt, QtCore
 from PyQt5.QtWidgets import (QApplication, QMainWindow, QDialog, 
                              QListWidgetItem, QCheckBox,
@@ -10,7 +20,6 @@ import os
 import json
 from collections import OrderedDict
 import matplotlib
-#matplotlib.use('agg')
 from matplotlib import pyplot as plt
 
 from masterarbeit.UI.main_window_ui import Ui_MainWindow
@@ -131,8 +140,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         store_txt = 'Store: {} <i>(change in File/Settings)</i>'.format(
             os.path.split(config.source)[1])
         self.store_label.setText(store_txt)
-        self.update_species_table()
         self.update_feature_table()
+        self.update_species_table()
         self.update_trained_classifiers()
 
     def load_source_image(self, filename):
@@ -172,6 +181,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         def delete_features():
             for feature in self.get_checked_features():
                 self.store.delete_feature_type(feature)
+            self.update_feature_table()
             self.update_species_table()
         self.delete_features_button.pressed.connect(delete_features)
         
@@ -284,7 +294,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         
     def update_trained_classifiers(self):
         self.classifier_prediction_combo.clear()
-        av_classifiers = self.store.get_classifiers()
+        av_classifiers = self.store.list_classifiers()
         for cls_name, names in av_classifiers.items():
             cls_type = None
             for c in CLASSIFIERS:
@@ -307,6 +317,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         if self.dict_images_radio.isChecked():
             BuildDictionaryDialog(preselected=self.get_checked_features(), 
                                   parent=self).exec_()
+        # build dict from raw features
         elif self.dict_features_radio.isChecked():        
             
             feat_types = self.get_checked_features()
@@ -317,13 +328,18 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             def build_from_store():
                 for feat_type in feat_types:
                     codebook = codebook_type(feat_type)
-                    features = self.store.get_features(feat_type, 
-                                                       categories=species)
+                    # pick only a few raw features as while building on the fly,
+                    # else may run out of memory (raw features tend to be huge)
+                    features = self.store.get_features(
+                        feat_type, categories=species,
+                        samples_per_category=3)
                     if features is None:
                         print('{} not described yet!'.format(feat_type.label))        
                         continue
-                    print('building {} for {} from {} features...'.format(
-                        codebook_type.__name__, feat_type.label, len(features)))
+                    print('building {} for {} from {} sampled features '
+                          .format(codebook_type.__name__, feat_type.label, 
+                                  len(features)) +
+                          '(3 per species)...')
                     codebook.fit(features)
                     self.store.save_codebook(codebook, feat_type)
                     print('codebook built and stored')
@@ -472,7 +488,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             feat_item.setCheckState(False)
             b_color = Qt.QColor(255, 255, 255) 
             if issubclass(feature_type, UnorderedFeature):
-                codebooks = self.store.get_codebooks(feature_type)
+                codebooks = self.store.list_codebooks(feature_type)
                 if len(codebooks) == 0:                    
                     dict_label = 'dictionary required, but none found'
                     b_color = Qt.QColor(255, 230, 230)
@@ -495,7 +511,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         table = self.species_table
         # remove all rows
         table.setRowCount(0)
-        stored_species = self.store.get_categories()
+        stored_species = self.store.list_categories()
         for row, species in enumerate(stored_species):
             table.insertRow(row)
             species_check = QTableWidgetItem(species)
@@ -512,8 +528,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                     feats.append(feature_type)
             feat_item = QTableWidgetItem(' | '.join(feat_txts))
             # there is no function to add extra data, so just appended
-            # available features at object (needed to do coloring without
-            # updating table again)
+            # available features to object (not a good style but needed to do 
+            # coloring without updating table again)
             feat_item.features = feats
             table.setItem(row , 0, species_check)              
             table.setItem(row , 1, feat_item)
@@ -576,7 +592,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         def describe():
             feature.describe(self.preprocessed_pixels, steps=steps) 
             if isinstance(feature, UnorderedFeature):
-                codebook = self.store.get_codebook(type(feature))
+                codebook = self.store.get_codebook(type(feature), None)
                 if codebook is None:
                     error_message('Codebook needed but not built yet!', 
                                   parent=self)

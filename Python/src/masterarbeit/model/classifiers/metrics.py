@@ -1,3 +1,13 @@
+'''
+contains the functions to measure and plot classifications
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 from sklearn.metrics import confusion_matrix
 import matplotlib.pyplot as plt
 import numpy as np
@@ -42,3 +52,24 @@ def plot_confusion_matrix(cm, classes, title, cmap=plt.cm.Blues):
     plt.tight_layout()
     plt.ylabel('True label')            
     plt.xlabel('Predicted label')    
+    
+def plot_cross_validation_scores(keras_history, title=''):
+    '''
+    original code taken from
+    http://machinelearningmastery.com/display-deep-learning-model-training-history-in-keras/
+    '''
+    plt.plot(keras_history.history['acc'])
+    plt.plot(keras_history.history['val_acc'])
+    plt.title(title + ' accuracy')
+    plt.ylabel('accuracy')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'test'], loc='upper right')
+    plt.show()
+    # summarize history for loss
+    plt.plot(keras_history.history['loss'])
+    plt.plot(keras_history.history['val_loss'])
+    plt.title(title + ' loss')
+    plt.ylabel('loss')
+    plt.xlabel('epoch')
+    plt.legend(['train', 'test'], loc='upper right')
+    plt.show()

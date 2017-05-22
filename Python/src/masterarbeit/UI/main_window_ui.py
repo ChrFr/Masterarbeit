@@ -312,6 +312,9 @@ class Ui_MainWindow(object):
         self.dict_features_radio = QtWidgets.QRadioButton(self.groupBox_5)
         self.dict_features_radio.setObjectName("dict_features_radio")
         self.verticalLayout_4.addWidget(self.dict_features_radio)
+        self.label_12 = QtWidgets.QLabel(self.groupBox_5)
+        self.label_12.setObjectName("label_12")
+        self.verticalLayout_4.addWidget(self.label_12)
         self.horizontalLayout_4.addLayout(self.verticalLayout_4)
         self.build_dict_button = QtWidgets.QPushButton(self.groupBox_5)
         self.build_dict_button.setObjectName("build_dict_button")
@@ -473,7 +476,7 @@ class Ui_MainWindow(object):
         self.menubar.addAction(self.menuBatch.menuAction())
 
         self.retranslateUi(MainWindow)
-        self.tabWidget.setCurrentIndex(0)
+        self.tabWidget.setCurrentIndex(1)
         QtCore.QMetaObject.connectSlotsByName(MainWindow)
 
     def retranslateUi(self, MainWindow):
@@ -513,7 +516,8 @@ class Ui_MainWindow(object):
         self.pairplot_button.setText(_translate("MainWindow", "Pairplot"))
         self.groupBox_5.setTitle(_translate("MainWindow", "Codebook"))
         self.dict_images_radio.setText(_translate("MainWindow", "from images"))
-        self.dict_features_radio.setText(_translate("MainWindow", "from selected stored features"))
+        self.dict_features_radio.setText(_translate("MainWindow", "from selected stored features "))
+        self.label_12.setText(_translate("MainWindow", "(Warning: last one only works on raw data!)"))
         self.build_dict_button.setText(_translate("MainWindow", "Build"))
         self.groupBox_3.setTitle(_translate("MainWindow", "Train feature for selected species"))
         self.label_3.setText(_translate("MainWindow", "Classifier"))

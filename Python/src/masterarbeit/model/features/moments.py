@@ -1,3 +1,13 @@
+'''
+contains features to describe the geometry-moments of binary images
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 from mahotas.features import zernike_moments
 from masterarbeit.model.features.feature import Feature
 from skimage import measure

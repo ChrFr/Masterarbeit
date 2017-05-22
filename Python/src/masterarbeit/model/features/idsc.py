@@ -1,3 +1,14 @@
+'''
+contains implementations of Independent Inner Distance Shape Contexts and 
+Independent Inner Distance Shape Context
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 import numpy as np
 import scipy as sp, scipy.spatial
 import cv2
@@ -11,7 +22,7 @@ from skimage.draw import line as skline
 
 from masterarbeit.model.features.feature import UnorderedFeature
 from masterarbeit.model.segmentation.helpers import simple_binarize
-from masterarbeit.model.features.codebook import (DictLearningCodebook, 
+from masterarbeit.model.features.codebooks import (DictLearningCodebook, 
                                                   KMeansCodebook)
 distance = euclidean
 shortest_path = floyd_warshall
@@ -24,7 +35,7 @@ class IDSC(UnorderedFeature):
     '''
     '''    
     label = 'Inner Distance Shape Context'
-    histogram_length = 100
+    histogram_length = 300
     n_contour_points = 300
     n_angle_bins = 8
     n_distance_bins = 8
@@ -152,8 +163,8 @@ class IDSC(UnorderedFeature):
 class MultilevelIDSC(IDSC):
     '''
     '''
-    label = 'Gaussian Inner Distance Shape Context'
-    histogram_length = 150
+    label = 'Multilevel Inner Distance Shape Context'
+    histogram_length = 300
     # points to take per level, from finest to coarsest (up the pyramid)
     n_contour_points = [400, 200, 40]
     tau = 4
@@ -222,7 +233,7 @@ class MultilevelIDSC(IDSC):
                 img = cv2.cvtColor(pyr_binary, cv2.COLOR_GRAY2BGR)
                 for p in contour_points:
                     cv2.circle(img, tuple(p), 2, 
-                               thickness=int(20 / (level + 1)), 
+                               thickness=int(10 * (level + 1)), 
                                color=(0, 255, 0))
                 # take an example point to visualize the max distance
                 ex_point = contour_points[int(len(contour_points) / 2)]
@@ -230,6 +241,6 @@ class MultilevelIDSC(IDSC):
                            color=(255, 0, 0))        
                 cv2.circle(img, tuple(p), int(self.max_distance), 
                            thickness=20, color=(255, 0, 0))                
-                steps['pyramid {}'.format(level)] = img
+                steps['gaussian level {}'.format(level)] = img
 
         return level_contexts

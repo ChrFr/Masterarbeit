@@ -1,3 +1,13 @@
+'''
+contains the abstract class of a classifier
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 import numpy as np
 from abc import ABCMeta
 from abc import abstractmethod
@@ -13,6 +23,7 @@ from masterarbeit.model.backend.data import load_class, class_to_string
 
 class Classifier(metaclass=ABCMeta):       
     label = 'None'
+    validation_split = 0.33
     
     def __init__(self, name, seed=None):
         self.seed = seed
@@ -48,11 +59,9 @@ class Classifier(metaclass=ABCMeta):
                                                return_inverse=True, 
                                                return_counts=True)
         self.trained_categories = list(unique_cat)
-        #unique_cat_count = zip(*(unique_cat, count))
-        #cat_str = ['{}({})'.format(u[0], u[1]) for u in unique_cat_count]
-        #self.trained_categories = ', '.join(cat_str)
         n_classes = len(unique_cat)
         values = np.array(values)
+        values = np.nan_to_num(values)
         print('Start training for {} categories '.format(n_classes) +
               'with an input dimension of {}'.format(values.shape[1]))
         self._train(values, classes, n_classes)
@@ -66,28 +75,34 @@ class Classifier(metaclass=ABCMeta):
     
     def predict(self, features):    
         #if feat_type not in self.trained_feature_types
-        values = np.array([feat.values for feat in features])    
+        values = np.array([feat.values for feat in features])   
+        values = np.nan_to_num(values)
         predictions = self._predict(values)        
         classes = np_utils.probas_to_classes(predictions)        
         return np.array(np.array(self.trained_categories))[classes]
     
-    def validate(self, features):
+    def _features_to_values(self, features):
+        categories, values = zip(*[(f.category, f.values) for f in features])
+        unique_cat, classes = np.unique(categories, return_inverse=True)
+        return np.array(values), classes, unique_cat
+            
+    def cross_validation(self, features):
         '''
         standalone validation of an untrained classifier
         splits the features into a training test set and a set for validation
         Warning: overwrites existing trained model 
         '''
-        categories, values = zip(*[(f.category, f.values) for f in features])
-        unique_cat, classes = np.unique(categories, return_inverse=True)
-        n_classes = len(unique_cat)
-        test_size = 0.33
+        values, classes, categories = self._features_to_values(features)
+        values = np.nan_to_num(values)
+        n_classes = len(categories)
         
         (training_values, test_values, 
          training_classes, test_classes) = train_test_split(
-             values, classes, test_size=test_size, random_state=self.seed)
+             values, classes, test_size=self.validation_split, 
+             random_state=self.seed)
         
         self._train(np.array(training_values), training_classes, n_classes)        
-        predictions = self._predict(np.array(test_values))        
+        predictions = self._predict(np.array(test_values))           
         predicted_classes = np_utils.probas_to_classes(predictions)    
         binary_labels = np_utils.to_categorical(test_classes)
         
@@ -99,8 +114,8 @@ class Classifier(metaclass=ABCMeta):
         label_precision = label_ranking_average_precision_score(binary_labels, 
                                                           predictions)
         
-        real_cat = unique_cat[test_classes]
-        predicted_cat = unique_cat[predicted_classes]         
+        real_cat = categories[test_classes]
+        predicted_cat = categories[predicted_classes]         
         return (real_cat, predicted_cat, accuracy, precision_score, 
                 error, loss, label_precision)
     

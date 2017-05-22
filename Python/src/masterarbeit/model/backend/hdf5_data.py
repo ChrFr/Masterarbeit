@@ -1,4 +1,15 @@
 #!/usr/bin/env python -W ignore::DeprecationWarning
+'''
+contains the implementation of a HDF5-backend for storing and accessing 
+features, codebooks and classifiers
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 import tables
 import pandas as pd
 import numpy as np
@@ -52,7 +63,7 @@ class HDF5Pandas(Data):
     def is_open(self):
         return self.store.is_open
         
-    def get_categories(self):   
+    def list_categories(self):   
         # use pytables for better hierarchical representation than pandas
         store = tables.open_file(self.source, mode='a')
         # the direct subfolders of /feature represent the names of the category
@@ -157,8 +168,9 @@ class HDF5Pandas(Data):
     def commit(self):
         self.store.flush(fsync=True)
             
-    def _get_feature_frame(self, cls, categories=None):        
-        av_category = self.get_categories()
+    def _get_feature_frame(self, cls, categories=None, 
+                           samples_per_category=None):        
+        av_category = self.list_categories()
         feature_frame = None
         for category in av_category:
             if categories is not None and category not in categories:
@@ -166,6 +178,8 @@ class HDF5Pandas(Data):
             df = self._get_feature_frame_cat(cls, category)
             if df is None:
                 continue
+            if samples_per_category is not None:
+                df = df.sample(samples_per_category)
             if feature_frame is None:
                 feature_frame = df
             else:            
@@ -183,47 +197,47 @@ class HDF5Pandas(Data):
         del df['datetime']
         return df
             
-    def get_features(self, feature_type, categories=None):
-        feature_frame = self._get_feature_frame(feature_type, 
-                                                categories=categories)
+    def get_features(self, feature_type, categories=None, codebook_type=None,
+                     samples_per_category=None):
+        feature_frame = self._get_feature_frame(
+            feature_type,  categories=categories,
+            samples_per_category=samples_per_category)
         if feature_frame is None:
             return None
         ids = feature_frame.index
         features = []
-        codebooks = [self.get_codebook(feat_type, codebook_type) 
-                     for feat_type in feat_types]        
+        codebook = self.get_codebook(feature_type, codebook_type) 
         for id in ids:
             r = feature_frame.loc[id]
             category = r['category']
             del r['category']
+            # raw data of unordered features
             if self.multi_dim_column in feature_frame.columns:
                 values = pickle.loads(r[self.multi_dim_column])
             else:
                 values = np.array([v for v in r])
             feature = feature_type(category, id=id)  
             feature.values = values
+            # transform stored raw data, if requested
             if (isinstance(feature, UnorderedFeature) and 
+                codebook is not None and
                 not feature.is_transformed):
-                codebook = codebooks[i]
-                if codebook is None:
-                    raise Exception(
-                        'codebook for {} needed but not found'
-                        .format(feat_types[i].label))
                 feature.transform(codebook)
             features.append(feature)
         return features
     
-    def get_joined_features(self, feat_types, categories, codebook_type=None):
+    def get_joined_features(self, feat_types, categories=None,
+                            codebook_type=None):
         '''
         orders features by id, only features with ids apperin 
         all feat_types and categories are returned
         '''
         features = []
         if categories is None:
-            categories = self.get_categories()
+            categories = self.list_categories()
         for category in categories:
             common_ids = None
-            feature_frames = []                  
+            feature_frames = [] 
             codebooks = [self.get_codebook(feat_type, codebook_type) 
                          for feat_type in feat_types]            
             for feat_type in feat_types:
@@ -298,7 +312,7 @@ class HDF5Pandas(Data):
                                     json.dumps(classifier_config))
             out_store.close()                      
             
-    def get_classifiers(self):
+    def list_classifiers(self):
         classifiers = {}
         # use pytables, because keras models were not saved as dataframes, 
         # so pandas doesn't find them
@@ -396,7 +410,7 @@ class HDF5Pandas(Data):
         codebook.deserialize(serialized)
         return codebook
     
-    def get_codebooks(self, feature_type):
+    def list_codebooks(self, feature_type):
         codebooks = []
         path = self.codebook_feature_path.format(feature=feature_type.__name__)
         for key in self.store.keys():
@@ -448,92 +462,3 @@ class HDF5Pandas(Data):
     def close(self):        
         self.store.close()
 
-class HDF5Tables(Data):    
-    '''
-    store the features in seperate tables with strong hierarchical group-order, 
-    makes only use of PyTables    
-    easy to read
-    '''
-    category_root = '/'
-    entries_table = 'entries'
-    feature_table_name = 'feature_{index}'
-    
-    def __init__(self):
-        self.store = None
-    
-    def open(self, source):
-        self.store = tables.open_file(source, mode='a')
-        
-    def get_categories(self): 
-        # the upper folders represent the names of the category
-        names = [g._v_name for g in self.store.list_nodes(self.category_root)]
-        return names
-            
-    def add_feature(self, category, feature): 
-        self.add_features(category, [feature])
-        
-    def _get_entries(self, category_group, feat_name):
-        # create feature path, if not exists
-        if feat_name not in category_group:
-            feat_group = self.store.create_group(category_group, 
-                                                 feat_name)
-            # create the lookup table for added entries as well
-            entries = self.store.create_table(
-                feat_group, self.entries_table,
-                description=EntriesTable,
-                title='lookup table for all added features'
-            )
-        else:
-            feat_group = self.store.get_node(category_group, 
-                                             feat_name)                      
-            entries = self.store.get_node(feat_group, self.entries_table)
-        # manual indexing(alternative: pytables autoindex)
-        # get last used index for type of feature 
-        # (0, if no entries yet)                    
-        indices = entries.col('index')
-        if len(indices > 0):
-            index = int(indices.max() + 1)
-        else:
-            index = 0 
-        
-        return feat_group, entries, index
-        
-    
-    def add_features(self, category, features): 
-        try:
-            category_group = self.store.get_node(self.category_root, category)
-        except:
-            self.store.createGroup(self.category_root, category)
-        feat_name = None        
-        for feature in features:
-            # type of feature changed: change paths
-            if feat_name != feature.name:             
-                feat_name = feature.name  
-                feat_group, entries, index = self._get_entries(category_group, 
-                                                               feat_name)                    
-            entry = entries.row                    
-            now = datetime.datetime.now().strftime(DATETIME_FORMAT)                
-            entry['index'] = index
-            entry['date'] = now
-            feature_table = self.feature_table_name.format(index=index)
-            entry['table'] = feature_table
-            entry.append()
-            entries.flush()
-            self.store.create_array(feat_group, feature_table, feature.values)
-            index += 1
-        
-    def close(self):        
-        self.store.close()
-        
-def split_list(lst, field_name):
-    lst.sort(key=lambda element: geattr(element, field_name))
-    ret = []
-    field_val = None
-    segment = []
-    for element in lst:
-        if field_val != geattr(element, field_name):
-            if len(feat_cat_list) > 0:
-                self._add_features(feat_cat_list, category, replace=replace)
-            field_val = geattr(element, field_name)
-            segment = [] 
-        segment.append(element)     

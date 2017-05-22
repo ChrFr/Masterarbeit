@@ -1,15 +1,30 @@
+'''
+contains functions to plot feature vectors
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 import seaborn as sns
 import pandas as pd
 import numpy as np
-from masterarbeit.model.features.common import features_to_dataframe
+from masterarbeit.model.features.helpers import features_to_dataframe
 
 def pairplot(features, max_dim=None, do_show=False):
+    '''plot pairwise distribution of feature values
+
+    Args:
+        max_dim (optional): int, maximum dimension per plot, 
+                            if not given all dimension are plotted in one vis.
+        do_show (optional): bool, if True, visualisation is shown when calling
+                            this function, else only drawn to canvas
+
+    '''
     sns.set(style="ticks", color_codes=True)      
     feature_frame = features_to_dataframe(features)        
-    #species = feature_frame['species']
-    #del feature_frame['species']
-    #feature_frame = (feature_frame - feature_frame.mean()) / (feature_frame.max() - feature_frame.min())
-    #feature_frame['species'] = species
     
     col_count = len(feature_frame.columns) - 1    
     columns = np.array(feature_frame.columns)
@@ -22,7 +37,6 @@ def pairplot(features, max_dim=None, do_show=False):
                                    ['category'])
         sliced_frame = feature_frame[sliced_columns]
         grid = sns.pairplot(sliced_frame, hue='category')
-        #sns.plt.rcParams['interactive'] = True
         
         if do_show:
             sns.plt.show()

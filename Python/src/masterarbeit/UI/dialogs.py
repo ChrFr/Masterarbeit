@@ -1,4 +1,14 @@
 # -*- coding: utf-8 -*-
+'''
+contains the views and controls of dialogs accessed from main window
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 from PyQt5.QtWidgets import (QDialog, QInputDialog, QListWidgetItem, QCheckBox,
                              QComboBox, QDialogButtonBox, QPushButton,
                              QGridLayout, QSpacerItem, QSizePolicy, QLabel,
@@ -23,6 +33,7 @@ from masterarbeit.config import (IMAGE_FILTER, ALL_FILES_FILTER, FEATURES,
 config = Config()
 
 def error_message(text, parent=None):
+    
     msg = QMessageBox(parent=parent)
     msg.setWindowTitle('Error')
     msg.setIcon(QMessageBox.Warning)
@@ -145,9 +156,9 @@ class ProgressDialog(QDialog, Ui_ProgressDialog):
     def _set_finished(self, code=None):
         if not self.killed:
             self.progress_bar.setValue(100)
-            self._show_status('<br><b>Done</b><br>')
+            self._show_status('<b>Done</b>')
         else:
-            self._show_status('<br><b><font color="red">Aborted</font></b><br>')
+            self._show_status('<b><font color="red">Aborted</font></b>')
         self._set_stopped()
 
     def kill(self):
@@ -158,9 +169,12 @@ class ProgressDialog(QDialog, Ui_ProgressDialog):
         self.thread.stop()
 
     def _show_status(self, text, progress=None):
-        self.log_edit.insertHtml(str(text) + '<br>')
-        self.log_edit.moveCursor(QtGui.QTextCursor.End)
-        if progress and progress >= 0:
+        if len(text) > 2:
+            t = datetime.datetime.now().strftime("%H:%M:%S")
+            self.log_edit.insertHtml(
+                '{time} - {text}<br>'.format(time=t, text=text))
+            self.log_edit.moveCursor(QtGui.QTextCursor.End)
+        if progress is not None and progress >= 0:
             self.progress_bar.setValue(progress)
 
     def _update_timer(self):
@@ -344,7 +358,9 @@ class BatchFeatureDialog(QDialog, Ui_FeatureDialog):
         # drag and drop images into image queue, 
         # will be handled by self.eventFilter
         self.image_queue_text.setAcceptDrops(True)
-        self.image_queue_text.installEventFilter(self)        
+        self.image_queue_text.installEventFilter(self)  
+        self.segmentatio_button.clicked.connect(
+            lambda: CropDialog(parent=self).exec_())
             
         # input images
         def browse_images():
@@ -444,7 +460,7 @@ class ExtractFeatureDialog(BatchFeatureDialog):
         # actually not a queue, but a dict. 
         self.setWindowTitle('Extract Features to {}'.format(config.source))
         self.file_queue = OrderedDict() 
-        self.av_species = self.store.get_categories()
+        self.av_species = self.store.list_categories()
         self.replace_check = QCheckBox('replace existing feature/species ' +
                                        'combinations in store')
         self.replace_check.setChecked(True)
@@ -528,17 +544,15 @@ class ExtractFeatureDialog(BatchFeatureDialog):
         if not store_raw:
             for feature_type in feature_types:
                 if issubclass(feature_type, UnorderedFeature):
+                    # ask for the codebook to use
+                    options = [(c.__name__, c) for c in CODEBOOKS]
+                    n, codebook_type, result = SelectionDialog.get_selection(
+                        options, 'Choose Codebook', 'Codebook', 
+                        parent=self)
+                    if not result:
+                        return    
                     break
-            # no codebook needed if no unordered feature found 
-            else:
-                return
-            # else ask for the codebook to use
-            options = [(c.__name__, c) for c in CODEBOOKS]
-            n, codebook_type, result = SelectionDialog.get_selection(
-                options, 'Choose Codebook', 'Codebook', 
-                parent=self)
-            if not result:
-                return        
+                
         diag = ProgressDialog(ExtractFeatureThread(self.file_queue, 
                                                    self.store, feature_types, 
                                                    build_codebook=build_codebook,
@@ -703,7 +717,7 @@ class ExtractFeatureThread(ProgressThread):
                                 codebook = feat_codebook_dict[feat_type]
                                 feat.transform(codebook)      
                                 text += ' and transformed with {}'.format(
-                                    codebook.__name__)
+                                    type(codebook).__name__)
                             features_per_species.append(feat)                                
                         text = text.format(feature=feat.label, file=input_file)     
                         self.status.emit(text, progress)                                    
@@ -716,19 +730,21 @@ class ExtractFeatureThread(ProgressThread):
         for feat_type in self.feature_types:      
             if issubclass(feat_type, UnorderedFeature):
                 if self.build_codebook:
-                    picked = []
-                    # pick 3 images per species to build codebook
+                    sample = []
+                    # sample 3 images per species to build codebook
                     for species, files in self.files.items():
                         idx = np.random.choice(len(files), 3)
-                        picked += list(np.array(files)[idx])
+                        sample += list(np.array(files)[idx])
                     self.status.emit(
-                        'Building {} '.format(feat_type.codebook_type.__name__) +
-                        'from {} randomly picked files'.format(len(picked)) +
+                        'Building {} for {} '.format(
+                            self.codebook_type.__name__, 
+                            feat_type.label) +
+                        'from {} randomly sampled files'.format(len(sample)) +
                         ' (3 per species)...', -1)
                     
                                         
                     feat_codebook_dict[feat_type] = build_codebook(
-                        feat_type, self.codebook_type, picked, self.store)  
+                        feat_type, self.codebook_type, sample, self.store)  
                 else:
                     feat_codebook_dict[feat_type] = self.store.get_codebook(
                         feat_type, self.codebook_type)   
@@ -795,6 +811,10 @@ class WaitDialog(QDialog):
             evnt.ignore() 
             
 def build_codebook(feat_type, codebook_type, files, store):
+    '''
+    extract features from given file and build a codebook
+    based on those features, built codebook will be stored
+    '''
     processor = Binarize()
     raw_features = []
     codebook = codebook_type(feat_type)

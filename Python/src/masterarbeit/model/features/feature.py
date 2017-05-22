@@ -1,3 +1,13 @@
+'''
+contains the abstract classes of all implemented features
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 import numpy as np
 from abc import ABCMeta
 from abc import abstractmethod
@@ -19,9 +29,9 @@ class Feature(metaclass=ABCMeta):
         self._v = None
         self.category = category
         
-    def _common_scale(self, image):
+    def _common_scale(self, image, downscale=1):
         resolution = image.shape[0] * image.shape[1]
-        scale = math.sqrt(self.n_pixels / resolution)        
+        scale = math.sqrt(self.n_pixels / resolution) / downscale      
         new_shape = (np.array(image.shape[:2]) * scale).astype(np.int)
         # cv2 swaps width with height
         scaled = cv2.resize(image, (new_shape[1], new_shape[0]))
@@ -76,6 +86,17 @@ class UnorderedFeature(Feature):
                             #.format(self.codebook_type.__name__))
         self.codebook_type = type(codebook)
         self._v = codebook.transform(self.values) 
+
+    @property    
+    def values(self):
+        if self._v is None:
+            raise Exception('Feature has not been described yet!')
+        return self._v  
+    
+    @values.setter    
+    def values(self, values):
+        # DO NOT FLATTEN!
+        self._v = values
 
 class JoinedFeature(Feature):
     label = 'Joined Feature'

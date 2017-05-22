@@ -1,3 +1,13 @@
+'''
+contains a class for displaying numpy images in PyQt
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 from PyQt5 import QtGui, QtCore
 import numpy as np
 

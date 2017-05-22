@@ -1,22 +1,25 @@
+'''
+contains the configuration for the UI
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 import json
 import os
 
-from masterarbeit.model.segmentation.segmentation import (
-    Binarize, BinarizeHSV, KMeansBinarize, KMeansHSVBinarize, Slic)
-from masterarbeit.model.features.moments import ZernikeMoments, HuMoments
-from masterarbeit.model.features.texture import (
-    Sift, Surf,
-    LocalBinaryPattern, LocalBinaryPatternCenterPatch, 
-    LocalBinaryPatternPatches,
-    LeafvenationMorph, 
-    GaborFilterBank, GaborFilterBankPatches,
-    GaborFilterBankCenterPatch)
-from masterarbeit.model.features.idsc import (IDSC, MultilevelIDSC)
+from masterarbeit.model.segmentation import segmentation
+from masterarbeit.model.features import moments
+from masterarbeit.model.features import texture
+from masterarbeit.model.features import keypoint_features
+from masterarbeit.model.features import idsc
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
-from masterarbeit.model.classifiers.mlp import ComplexMLP, SimpleMLP
-from masterarbeit.model.classifiers.svm import SVM
-from masterarbeit.model.features.codebook import (KMeansCodebook, 
-                                                  DictionaryLearning)
+from masterarbeit.model.classifiers import mlp
+from masterarbeit.model.classifiers import svm
+from masterarbeit.model.features import codebooks
 
 SUPPORTED_IMAGE_EXTENSIONS = ['.png', '.jpg', '.tif']
 IMAGE_FILTER = 'Images ({})'.format(
@@ -24,23 +27,45 @@ IMAGE_FILTER = 'Images ({})'.format(
 ALL_FILES_FILTER = 'All Files(*.*)'
 HDF5_FILTER = 'HDF5 (*.h5)'
 
-SEGMENTATION = (Binarize, BinarizeHSV, KMeansBinarize, KMeansHSVBinarize, Slic)
-FEATURES = (HuMoments, ZernikeMoments,
-            MultilevelIDSC, IDSC, 
-            Sift, Surf, 
-            LocalBinaryPattern, LocalBinaryPatternCenterPatch, 
-            LocalBinaryPatternPatches,
-            LeafvenationMorph, 
-            GaborFilterBank, GaborFilterBankPatches, 
-            GaborFilterBankCenterPatch)
-CODEBOOKS = (KMeansCodebook, DictionaryLearning)
-CLASSIFIERS = (ComplexMLP, SimpleMLP, SVM)
+SEGMENTATION = (
+    segmentation.Binarize, 
+    segmentation.BinarizeHSV, 
+    segmentation.KMeansBinarize, 
+    segmentation.KMeansHSVBinarize, 
+    segmentation.Slic
+)
+
+FEATURES = (
+    moments.HuMoments, moments.ZernikeMoments,
+    idsc.MultilevelIDSC, idsc.IDSC, 
+    keypoint_features.Sift, keypoint_features.Surf, 
+    texture.LocalBinaryPattern, 
+    texture.LocalBinaryPatternCenterPatch, 
+    texture.LocalBinaryPatternPatches,
+    texture.LeafvenationMorph, 
+    texture.GaborFilterBank, 
+    texture.GaborFilterBankPatches, 
+    texture.GaborFilterBankCenterPatch)
+
+CODEBOOKS = (
+    codebooks.KMeansCodebook, 
+    codebooks.DictLearningCodebook
+)
+
+CLASSIFIERS = (
+    mlp.SimpleMLP, 
+    mlp.ComplexMLP, 
+    svm.SVM
+)
+
 DATA = [HDF5Pandas]
 
 file_path = os.path.split(__file__)[0]
 
 
 class Singleton(type):
+    """Metaclass for singletons    
+    """
     _instances = {}
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
@@ -49,11 +74,19 @@ class Singleton(type):
     
     
 class Config(metaclass=Singleton):  
+    """Class holding the configuration for the UI.
+    
+    configurations are accessed dict-like
+    
+    Attributes:
+        config_file (str): the filename of the configuration file
+
+    """
     # config file is stored in same path as this file
     config_file = os.path.join(file_path, 'config.json')
     
     # the main segmentation used, when not asked for specific one
-    default_segmentation = KMeansHSVBinarize
+    default_segmentation = segmentation.KMeansHSVBinarize
     
     # config is built out of this dict, if not exists yet
     _default = {
@@ -72,6 +105,11 @@ class Config(metaclass=Singleton):
             self.write() 
         
     def read(self):
+        """read the configuration file
+        
+        reads configuration file and sets stored configurations       
+        
+        """
         try:
             with open(self.config_file, 'r') as cf:
                 self._config = json.load(cf)
@@ -84,6 +122,11 @@ class Config(metaclass=Singleton):
             print('Error while loading config. Using default values.')
     
     def write(self):    
+        """write to the configuration file
+        
+        writes configuration to the configuration file as JSON
+        
+        """
         # TODO: serialize class instead of storing name
         config_copy = self._config.copy()
         config_copy['data'] = self._config['data'].__name__

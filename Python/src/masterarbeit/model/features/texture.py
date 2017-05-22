@@ -1,95 +1,44 @@
-from skimage.feature import local_binary_pattern, multiblock_lbp, draw_multiblock_lbp
-from skimage.transform import integral_image
+'''
+contains features to describe textures
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
+from skimage.feature import local_binary_pattern
 from sklearn.preprocessing import normalize
 from scipy import ndimage as ndi
-from skimage.util import img_as_float
 from skimage.filters import gabor_kernel
-from skimage.feature import greycomatrix
-from mahotas.features import haralick
 import numpy as np
 import cv2
 import itertools
 
-from masterarbeit.model.features.feature import Feature, UnorderedFeature
-from masterarbeit.model.features.codebook import KMeansCodebook
-from masterarbeit.model.segmentation.segmentation import Binarize
+from masterarbeit.model.features.feature import Feature
 from masterarbeit.model.segmentation.helpers import crop
 from masterarbeit.model.segmentation.helpers import simple_binarize
 
-
-class Sift(UnorderedFeature):
-    label = 'Sift Keypoints'
-    histogram_length = 50
-    columns = np.arange(0, histogram_length)
-    codebook_type = KMeansCodebook
-    
-    def _describe(self, image, steps=None):
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)   
-        gray[gray==255] = 0
-        sift = cv2.xfeatures2d.SIFT_create()
-        kp, des = sift.detectAndCompute(gray, None)
-        if steps is not None:
-            img_keys = cv2.drawKeypoints(gray, kp, None, 
-                                         flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-            steps['keypoints'] = img_keys
-            
-        return des
-           
-    
-class Surf(UnorderedFeature):
-    label = 'Surf Keypoints'
-    histogram_length = 50
-    codebook_type = KMeansCodebook
-    
-    def _describe(self, image, steps=None):    
-        surf = cv2.xfeatures2d.SURF_create()
-        kp, des = surf.detectAndCompute(image, None)
-        if steps is not None:
-            img_keys = cv2.drawKeypoints(image, kp, None, 
-                                         flags=cv2.DRAW_MATCHES_FLAGS_DRAW_RICH_KEYPOINTS)
-            steps['keypoints'] = img_keys
-            
-        return des
-    
-                
-def gabor(image):
-
-    def build_filters():
-        filters = []
-        ksize = 31
-        for theta in np.arange(0, np.pi, np.pi / 16):
-            kern = cv2.getGaborKernel((ksize, ksize), 4.0, theta, 
-                                      10.0, 0.5, 0, ktype=cv2.CV_32F)
-            kern /= 1.5*kern.sum()
-            filters.append(kern)
-        return filters
-
-    def process(img, filters):
-        accum = np.zeros_like(img)
-        for kern in filters:
-            fimg = cv2.filter2D(img, cv2.CV_8UC3, kern)
-            np.maximum(accum, fimg, accum)
-        return accum        
-
-    filters = build_filters()
-
-    res1 = process(image, filters)
-
-    return res1     
-
-
+  
 class LocalBinaryPattern(Feature):
     label = 'Local Binary Pattern Detection'
     radius = 3
     n_points = 8 * radius        
     
     def _describe(self, image, steps=None):
+        # scale here, because radius depends on number of pixels
+        self._common_scale(image, downscale=2)
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)   
         #gray = gabor(gray)
-        lbp = local_binary_pattern(gray, self.n_points, self.radius, method='uniform')
-        histogram, _ = np.histogram(lbp.ravel(),
+        lbp = local_binary_pattern(gray, self.n_points, self.radius, 
+                                   method='uniform')
+        if steps is not None:
+            lbp_img = (lbp * 255 / self.n_points).astype(np.uint8)
+            cv2.imshow('', lbp_img)
+        histogram, _ = np.histogram(lbp.ravel(), normed=True,
                                     bins=np.arange(0, self.n_points + 2),
-                                    range=(0, self.n_points + 2))        
+                                    range=(0, self.n_points + 2)) 
         #normed = normalize(histogram.reshape(1, -1))[0]                
         return histogram
     
@@ -104,12 +53,13 @@ class LocalBinaryPatternCenterPatch(LocalBinaryPattern):
                                    steps=steps)
         if steps is not None:
             steps['patch'] = patch
-        return super(LocalBinaryPatternCenterPatch, self)._describe(image, steps=steps)
+        return super(LocalBinaryPatternCenterPatch, self)._describe(image, 
+                                                                    steps=steps)
     
     
 class LocalBinaryPatternPatches(LocalBinaryPattern):
 
-    label = 'Local Binary Pattern Multi Patches'
+    label = 'Local Binary Pattern Matrix-Patches'
     
     def _describe(self, image, steps=None):        
         patches = get_matrix_patches(image, 300, steps=steps)
@@ -122,8 +72,8 @@ class LocalBinaryPatternPatches(LocalBinaryPattern):
             else:
                 histogram += sub_hist
         histogram = histogram / len(patches)
-        return normalize(histogram.reshape(1, -1))[0]    
-       
+        #histogram = normalize(histogram.reshape(1, -1))[0]           
+        return histogram 
     
 class LeafvenationMorph(Feature):
     label = 'Leaf Veins Morphology'
@@ -139,17 +89,19 @@ class LeafvenationMorph(Feature):
         background_mask = (background_mask != 0)
         # area of foreground in pixels
         leaf_area = gray.size - background_mask.sum()
-        gabor_img = gabor(gray)      
+        gabor_img = gabor_image(gray)      
         if steps is not None:
             cv2.imshow('k', gabor_img)
         
-        def segment_veins(img, kernel_size):
+        def segment_veins(img, kernel_size, threshold=125):
             disk = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, 
                                              (kernel_size, kernel_size))
             closed = cv2.morphologyEx(gabor_img, cv2.MORPH_CLOSE, disk)
             veins = gabor_img - closed
-            veins[veins < 125] = 0
+            # binarize (simple version)
+            veins[veins < threshold] = 0
             veins = np.clip(veins, 0, 1)
+            # invert
             veins = 1 - veins 
             veins[background_mask] = 0
             return veins        
@@ -175,10 +127,78 @@ class LeafvenationMorph(Feature):
             histogram.append(perc_veins)            
         
         return np.array(histogram)          
-       
+
+
+class GaborFilterBank(Feature):
+    label = 'Gabor filters'
+    binary_input = False
+    
+    def _describe(self, image, steps=None):
+        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)  
+        thetas = np.arange(0, np.pi, np.pi / 8)
+        sigmas = range(1, 4)
+        lambdas = [5, 10]
+        kernels = build_gabor_filterbank(thetas, sigmas, lambdas)
+                    
+        feats = np.zeros((len(kernels), 2), dtype=np.double)
+        for k, kernel in enumerate(kernels):
+            # convolve with filter
+            filtered = cv2.filter2D(gray, cv2.CV_64F, kernel)
+            feats[k, 0] = filtered.mean()
+            feats[k, 1] = filtered.var() 
+        normed = normalize(feats.flatten().reshape(1, -1))[0]
+        return normed
+    
+    
+class GaborFilterBankPatches(GaborFilterBank):
+    label = 'Gabor filter Matrix-Patches'
+    def _describe(self, image, steps=None): 
+        patches = get_matrix_patches(image, 400, steps=steps)
+        histogram = np.zeros(8 * 3 * 2 * 2)
+        for patch in patches:     
+            histogram += super(GaborFilterBankPatches, self)._describe(
+                patch, steps=None)
+        return histogram / histogram.max()
+    
+    
+class GaborFilterBankCenterPatch(GaborFilterBank):
+    label = 'Gabor filter Center Patch'
+    def _describe(self, image, steps=None): 
+        patch = get_circular_patch(image, steps=steps)        
+        histogram = super(GaborFilterBankCenterPatch, self)._describe(
+                patch, steps=steps)
+        if steps is not None:
+            steps['patch'] = patch
+        return histogram / histogram.max()
+    
+def build_gabor_filterbank(thetas, sigmas, lambdas):
+    filters = []
+    for theta, sigma, lambd in itertools.product(thetas, sigmas, lambdas):
+        kernel = cv2.getGaborKernel(None, sigma, theta, 
+                                    lambd, 0.5, 0, ktype=cv2.CV_32F)
+        filters.append(kernel)
+    return filters
+                
+def gabor_image(image):
+    # 16 orientations
+    thetas = np.arange(0, np.pi, np.pi / 16)
+    filters = build_gabor_filterbank(thetas, [4.0], [10.0])
+
+    accumulated = np.zeros(image.shape, dtype=np.uint8)
+    for kernel in filters:
+        # normalize kernel
+        kernel /= 1.5 * kernel.sum()
+        # convolve with filter
+        filtered = cv2.filter2D(image, cv2.CV_8UC3, kernel)
+        
+        # accumulate the energys        
+        accumulated = np.maximum(accumulated, filtered)
+        
+    return accumulated          
+
 def get_center_patch(image, texture_ratio=0.95):
     binary = simple_binarize(image)
-    
+
     im2, contours, hierarchy = cv2.findContours(binary, 
                                                 cv2.RETR_TREE, 
                                                 cv2.CHAIN_APPROX_NONE)
@@ -190,20 +210,19 @@ def get_center_patch(image, texture_ratio=0.95):
     rect = cv2.minAreaRect(contour_points)
     box = cv2.boxPoints(rect)
     box = np.int0(box)
-    #img=cv2.drawContours(image.copy(),cnt,0,(0,0,255),2)   
-    #img=cv2.drawContours(image.copy(),[box],0,(0,0,255),10)  
+    
     # center of mass
     moments = cv2.moments(contour_points)
     mass_center = (int(moments['m10']/moments['m00']),
                    int(moments['m01']/moments['m00']))
     #img = cv2.circle(img, mass_center, 20, (255, 0, 0), thickness=10)
     #steps['rotated bbox'] = img
-    
+
     center = rect[0]
     angle = rect[2]
     if angle < -45:
         angle += 90.0
-        
+
     rot = cv2.getRotationMatrix2D(mass_center, angle, 1)
     trans = cv2.warpAffine(image, rot, (width, height))
     #steps['trans'] = trans
@@ -224,7 +243,7 @@ def get_center_patch(image, texture_ratio=0.95):
 
 def get_circular_patch(image, texture_ratio=1, steps=None):
     binary = simple_binarize(image) * 255
-                 
+
     im2, contours, hierarchy = cv2.findContours(binary, 
                                                 cv2.RETR_TREE, 
                                                 cv2.CHAIN_APPROX_NONE)
@@ -232,7 +251,7 @@ def get_circular_patch(image, texture_ratio=1, steps=None):
         return None
     contour = max(contours, key=len)
     center, enclosing_radius = cv2.minEnclosingCircle(contour) 
-    
+
     # starting with size of 70% of enclosing circle
     for scale in np.arange(0.3, 0.9, 0.1):
         scale = 1.0 - scale
@@ -248,14 +267,14 @@ def get_circular_patch(image, texture_ratio=1, steps=None):
         if ((encircled_pixels == 0).sum() <= 
             circle_mask.sum() * (1 - texture_ratio)):
             break
-        
+
     if steps is not None:
         cv2.circle(image, 
                    (int(center[0]), int(center[1])), 
                    int(radius), (0, 255, 0), thickness=10)
         steps['cutout'] = image 
     return crop(encircled_pixels)
-        
+
 def get_matrix_patches(image, n_cells, pick=None, steps=None):
     '''
     image is divided in n cells
@@ -281,51 +300,8 @@ def get_matrix_patches(image, n_cells, pick=None, steps=None):
                               (0, 255, 0), thickness=10)
     if steps is not None:
         steps['cutout'] = s_image
+        
+    # leaf too small for patches, take whole leaf instead
+    if len(patches) == 0:
+        patches.append(image)         
     return patches                    
-
-
-class GaborFilterBank(Feature):
-    label = 'Gabor filters'
-    binary_input = False
-    columns = np.arange(32)
-    
-    def _describe(self, image, steps=None):
-        gray = cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)    
-        kernels = []
-        for theta in range(4):
-            theta = theta / 4. * np.pi
-            for sigma in (1, 3):
-                for frequency in (0.05, 0.25):
-                    kernel = np.real(gabor_kernel(frequency, theta=theta,
-                                                  sigma_x=sigma, sigma_y=sigma))
-                    kernels.append(kernel)      
-                    
-        feats = np.zeros((len(kernels), 2), dtype=np.double)
-        for k, kernel in enumerate(kernels):
-            filtered = ndi.convolve(gray, kernel, mode='wrap')
-            feats[k, 0] = filtered.mean()
-            feats[k, 1] = filtered.var() 
-        normed = normalize(feats.flatten().reshape(1, -1))[0]
-        return normed
-    
-class GaborFilterBankPatches(GaborFilterBank):
-    label = 'Gabor filters Multi Patches'
-    def _describe(self, image, steps=None): 
-        patches = get_matrix_patches(image, 400, steps=steps)
-        histogram = np.zeros(32)
-        for patch in patches:     
-            histogram += super(GaborFilterBankPatches, self)._describe(
-                patch, steps=None)
-        return histogram / histogram.max()
-    
-class GaborFilterBankCenterPatch(GaborFilterBank):
-    label = 'Gabor filters Center Patch'
-    def _describe(self, image, steps=None): 
-        patch = get_circular_patch(image, steps=steps)        
-        histogram = super(GaborFilterBankCenterPatch, self)._describe(
-                patch, steps=steps)
-        if steps is not None:
-            steps['patch'] = patch
-        return histogram
-    
-    

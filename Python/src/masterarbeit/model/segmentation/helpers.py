@@ -1,3 +1,13 @@
+'''
+contains auxiliary functions for reading and segmenting files
+
+(c) 2017, Christoph Franke
+
+this file is part of the master thesis 
+"Computergestuetzte Identifikation von Pflanzen anhand ihrer Blattmerkmale"
+'''
+__author__ = "Christoph Franke"
+
 import numpy as np
 import cv2
    

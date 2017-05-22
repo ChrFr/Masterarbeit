@@ -3,7 +3,7 @@ import pytest
 import os
 from masterarbeit.model.features.moments import HuMoments
 from masterarbeit.model.features.moments import ZernikeMoments
-from masterarbeit.model.features.idsc import IDSCGaussiansKMeans
+from masterarbeit.model.features.idsc import MultilevelIDSC
 from masterarbeit.model.backend.hdf5_data import HDF5Pandas
 
 _image_shape = (200, 200, 3)
@@ -56,7 +56,7 @@ def test_read_features(data, features):
     for i, feature in enumerate(features):
         assert (stored_features[i]._v != feature._v).sum() == 0
         
-    categories = data.get_categories()
+    categories = data.list_categories()
     # 2 different binaries defined as different categories
     assert len(categories) == 2
     
