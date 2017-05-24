@@ -18,6 +18,7 @@ from sklearn.preprocessing import LabelEncoder
 import copy
 import pickle
 from sklearn.model_selection import train_test_split
+THEANO_FLAGS='floatX=float32,device=cuda0,lib.cnmem=1'
 
 from masterarbeit.model.classifiers.classifier import Classifier
 

@@ -118,6 +118,7 @@ class KMeansBinarize(Segmentation):
             
         # kmeans of sklearn works better than cv2 and outcome is more predictable
         kmeans = KMeans(n_clusters=n_clusters)
+        reshaped_img = reshaped_img.astype(np.float64)
         label = kmeans.fit_predict(reshaped_img)   
                         
         height, width = resized.shape[:2]

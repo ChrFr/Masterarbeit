@@ -223,6 +223,8 @@ class HDF5Pandas(Data):
                 codebook is not None and
                 not feature.is_transformed):
                 feature.transform(codebook)
+            else:
+                feature.codebook_type = codebook_type
             features.append(feature)
         return features
     
@@ -266,6 +268,9 @@ class HDF5Pandas(Data):
                                 'codebook for {} needed but not found'
                                 .format(feat_types[i].label))
                         feature.transform(codebook)
+                    else:
+                        feature.codebook_type = codebook_type if (
+                            isinstance(feature, UnorderedFeature)) else None
                     joined_feature.add(feature)
                 features.append(joined_feature)
         return features
@@ -379,7 +384,11 @@ class HDF5Pandas(Data):
             in_store.close()        
             classifier.meta = status            
         
-        classifier.deserialize(serialized)
+        classifier.deserialize(serialized)        
+        classifier.meta['trained categories'] = classifier.trained_categories
+        classifier.meta['trained features'] = dict(
+            [(k.__name__, v.__name__ if v is not None else '') 
+             for k, v in classifier.trained_features.items()])
         return classifier        
     
     def delete_classifier(self, cls, name):

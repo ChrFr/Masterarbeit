@@ -38,7 +38,8 @@ from masterarbeit.UI.dialogs import (CropDialog, ExtractFeatureDialog,
                                      FunctionProgressDialog, error_message)
 
 from masterarbeit.model.segmentation.segmentation import KMeansHSVBinarize
-from masterarbeit.model.features.feature import UnorderedFeature
+from masterarbeit.model.features.codebooks import KMeansCodebook
+from masterarbeit.model.features.feature import UnorderedFeature, JoinedFeature
 
 config = Config()
 
@@ -227,8 +228,6 @@ class MainWindow(QMainWindow, Ui_MainWindow):
             self.codebook_combo.addItem(codebook.__name__, codebook)
         self.build_dict_button.pressed.connect(self.build_codebook)        
         
-        self.train_button.pressed.connect(self.train)                
-        
     def setup_prediction_tab(self):
         self.update_trained_classifiers()
                 
@@ -277,6 +276,7 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 codebook_dict[feat_type] = self.store.get_codebook(
                     feat_type, codebook_type)
         for file in files:
+            feats = []
             image = read_image(file)
             binary = segmentation.process(image)
             for feat_type in feats_used.keys():
@@ -287,7 +287,13 @@ class MainWindow(QMainWindow, Ui_MainWindow):
                 elif isinstance(feature, UnorderedFeature):
                     codebook = codebook_dict[feat_type]
                     feature.transform(codebook)
-                features.append(feature)
+                feats.append(feature)
+            if len(feats) > 1:
+                joined = JoinedFeature(category=None)
+                for feat in feats:
+                    joined.add(feat)
+                feats = [joined]
+            features.extend(feats)
         predictions = self.pred_classifier.predict(features)
         for row, pred in enumerate(predictions):
             self.prediction_table.setItem(row , 1, QTableWidgetItem(pred))         
@@ -353,22 +359,22 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         species = self.get_checked_species()
         if len(species) == 0 or len(feat_types) == 0:
             return        
-         
-        feat_type = feat_types[0]
+        
         if len(feat_types) == 0 or len(species) == 0:
             return
-        features = self.store.get_features(feat_type, categories=species)
-        ready_features = []
-        raw_features = []
-        for feature in features:
-            if (isinstance(feature, UnorderedFeature) and
-                not feature.is_transformed):
-                raw_features.append(feature)
-            else:
-                ready_features.append(feature)         
-                
-        feat_codebook_dict = {}
         codebook_type = self.codebook_combo.currentData()  
+        if len(feat_types) == 1:
+            features = self.store.get_features(
+                feat_types[0], 
+                categories=species,
+                codebook_type=codebook_type)
+        else:
+            features = self.store.get_joined_features(
+                feat_types, 
+                categories=species,
+                codebook_type=codebook_type
+            )
+        feat_codebook_dict = {}
             
         name, ok = QInputDialog.getText(self, 'Classifier', 
                                     'set name of classifier')
@@ -378,25 +384,10 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         classifier = cls(name)   
         
         def train_and_save():
-            if len(raw_features) > 0:
-                codebooks = {}
-                print('transforming raw features with {}'.format(
-                    codebook_type.__name__))
-                for feature in raw_features:
-                    feat_type = type(feature)
-                    if feat_type in codebooks:
-                        codebook = codebooks[feat_type]
-                    else:
-                        codebook = self.store.get_codebook(feat_type, 
-                                                           codebook_type)
-                        codebooks[feat_type] = codebook
-                    feature.transform(codebook)
-                    ready_features.append(feature)
             print('training classifier...')
             classifier.train(features)
             print('classifier trained')
             self.store.save_classifier(classifier)
-            
         FunctionProgressDialog(train_and_save, parent=self).exec_()
         self.update_trained_classifiers()
         
@@ -592,7 +583,8 @@ class MainWindow(QMainWindow, Ui_MainWindow):
         def describe():
             feature.describe(self.preprocessed_pixels, steps=steps) 
             if isinstance(feature, UnorderedFeature):
-                codebook = self.store.get_codebook(type(feature), None)
+                codebook = self.store.get_codebook(type(feature), 
+                                                   KMeansCodebook)
                 if codebook is None:
                     error_message('Codebook needed but not built yet!', 
                                   parent=self)

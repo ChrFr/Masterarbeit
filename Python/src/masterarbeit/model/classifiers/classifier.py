@@ -18,8 +18,9 @@ from sklearn.metrics import (label_ranking_loss,
                              coverage_error, average_precision_score)
 
 from keras.utils import np_utils
-from masterarbeit.model.features.feature import UnorderedFeature
+from masterarbeit.model.features.feature import UnorderedFeature, JoinedFeature
 from masterarbeit.model.backend.data import load_class, class_to_string
+from collections import OrderedDict
 
 class Classifier(metaclass=ABCMeta):       
     label = 'None'
@@ -29,9 +30,10 @@ class Classifier(metaclass=ABCMeta):
         self.seed = seed
         self.name = name
         self.model = None
-        self.trained_features = []
+        self.trained_features = {}
         self.trained_categories = []
         self.input_dim = 0
+        self.meta = {}
         
     @abstractmethod
     def setup_model(self, input_dim, n_categories):
@@ -39,18 +41,33 @@ class Classifier(metaclass=ABCMeta):
           
     def train(self, features):
         
-        categories, values, feat_types, codebook_types = zip(
-            *[(f.category, f.values, type(f), 
-               f.codebook_type if hasattr(f, 'codebook_type') else None) 
-              for f in features]) 
-        feat_types = np.array(feat_types)
-        codebook_types = np.array(codebook_types)
-        u, idx = np.unique(feat_types.astype(str), 
-                           return_index=True)
-        unique_types = feat_types[idx]
-        
-        codebooks_used = codebook_types[idx]
-        self.trained_features = dict(zip(unique_types, codebook_types))
+        if isinstance(features[0], JoinedFeature):
+            categories, values, feat_types, codebook_types = zip(
+                *[(f.category, f.values, f.feature_types, 
+                   f.codebook_types) for f in features])             
+            unique_types = np.array(
+                [list(t) for t in set(tuple(t) for t in feat_types)])
+            codebooks_used = np.array(
+                [list(t) for t in set(tuple(t) for t in codebook_types)])
+            if len(unique_types) > 1 or len(codebooks_used) > 1:
+                raise Exception('The joined features are not uniform. '
+                                'Different features and/or codebooks were used.')
+            unique_types = unique_types.flatten()
+            codebooks_used = codebooks_used.flatten()
+        else:
+            categories, values, feat_types, codebook_types = zip(
+                *[(f.category, f.values, type(f), 
+                   f.codebook_type if hasattr(f, 'codebook_type') else None) 
+                  for f in features]) 
+            feat_types = np.array(feat_types)
+            codebook_types = np.array(codebook_types)
+            u, idx = np.unique(feat_types.astype(str), 
+                               return_index=True)
+            unique_types = feat_types[idx]        
+            codebooks_used = codebook_types[idx]
+            
+        self.trained_features = OrderedDict(
+            zip(unique_types.flatten(), codebooks_used))        
         
         # returned index serves as an integer representation of the category 
         # with SAME order of the unique categories (important for 
@@ -129,7 +146,7 @@ class Classifier(metaclass=ABCMeta):
     def deserialize(self, serialized):
         trained_features = [load_class(ft) for ft in serialized[0]]
         codebooks_used = [load_class(c) for c in serialized[1]]
-        self.trained_features = dict(zip(trained_features, codebooks_used))
+        self.trained_features = OrderedDict(zip(trained_features, codebooks_used))
         self.trained_categories = serialized[2]     
             
     @abstractmethod        

@@ -176,11 +176,15 @@ class Data(ABC):
             pass
     
 def class_to_string(cls):
+    if cls is None:
+        return ''
     mod = cls.__module__
     cls_name = cls.__name__
     return '{mod}.{cls}'.format(mod=mod, cls=cls_name)
 
 def load_class(class_string):
+    if not class_string:
+        return None
     split = class_string.split('.')
     module_str = '.'.join(split[:-1])
     module = importlib.import_module(module_str)

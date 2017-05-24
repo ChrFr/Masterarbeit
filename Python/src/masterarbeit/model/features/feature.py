@@ -104,9 +104,16 @@ class JoinedFeature(Feature):
     def __init__(self, category, id=None):
         super(JoinedFeature, self).__init__(category, id=id)
         self._v = np.empty(0)
+        self.feature_types = []
+        self.codebook_types = []
     
     def add(self, feature):
         self._v = np.concatenate((self._v, feature.values))
+        codebook_type = feature.codebook_type if hasattr(
+            feature, 'codebook_type') else None
+        feature_type = type(feature)
+        self.feature_types.append(feature_type)
+        self.codebook_types.append(codebook_type)
         
     def describe(self, image, steps=None):
         pass    

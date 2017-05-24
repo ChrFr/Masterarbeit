@@ -43,10 +43,12 @@ class SVM(Classifier):
     
     def serialize(self):
         pickled = pickle.dumps(self.model)
-        trained_features = [class_to_string(ft) for ft in self.trained_features]
-        return [[pickled], trained_features, self.trained_categories]
+        serialized = super(SVM, self).serialize()
+        ret = [[pickled]]
+        ret.extend(serialized)
+        return ret
     
     def deserialize(self, serialized):
         self.model = pickle.loads(serialized[0][0])
-        self.trained_features = [load_class(ft) for ft in serialized[1]]
-        self.trained_categories = serialized[2] 
+        super(SVM, self).deserialize(serialized[1:])
+        
